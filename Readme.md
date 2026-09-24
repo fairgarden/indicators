@@ -92,6 +92,7 @@ pnpm --filter @fairgarden/indicators-docs dev
 - **Layouts** — where the root layout goes, and what each level reads
 - **In a monolith** — mounting an app that uses this
 - **Functions** — `createIndicators`, `withFairGardenIndicators`, `createNavigation`, `createLocaleProxy` and the rest
+- **Demos** — every capability live, on the docs site itself
 
 ## Install
 

@@ -203,3 +203,16 @@ test('serves a site in one language with no locale at all', async () => {
     { prefs: '-', flags: 'tz~EST' },
   ])
 })
+
+test('prerenders only the common preference values, and serves the rest on demand', () => {
+  const site = createIndicators({
+    locales: ['en'],
+    defaultLocale: 'en',
+    prefs: {
+      theme: { values: ['light', 'dark'], prerender: ['dark'] },
+      density: { values: ['compact', 'comfortable'], prerender: false },
+    },
+  })
+  assert.deepEqual(site.prefs.generateStaticParams(), [{ prefs: '-' }, { prefs: 'theme~dark' }])
+  assert.deepEqual(site.prefs.decode('density~compact.theme~light'), { density: 'compact', theme: 'light' })
+})

@@ -1,0 +1,20 @@
+# Demos
+
+This site runs the library it documents. Every page here is served through
+the rewrites, so what follows is not a simulation: change a preference and
+the page you get back is the one the rewrites chose.
+
+What to look for throughout is what does *not* happen. A preference change
+never shows a frame in the old state — no white background before dark mode
+lands — because the answer is in the HTML and CSS the browser receives, not
+in a script that runs afterwards.
+
+- [Preferences](/demos/prefs) — a theme in the path: a prerendered copy per value, switched with a refresh
+- [Stylesheets](/demos/stylesheets) — an accent in a stylesheet: one line of CSS, switched without a reload
+- [Flags](/demos/flags) — what the browser asks for, rendered on demand
+- [Hard flags](/demos/hard-flags) — a beta cohort with its own route tree, and the fallback for pages it lacks
+- [Locales](/demos/locales) — links that carry the locale, a remembered choice, and the redirect at the root
+- [Static generation](/demos/static) — what the build holds, and what waits for a first request
+
+Each page ends with the same inspector: the address bar, the internal path
+the request was rewritten to, and the values the page was rendered for.

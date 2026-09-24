@@ -3,6 +3,11 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import createMDX from '@next/mdx'
 import type { NextConfig } from 'next'
+import { withFairGardenIndicators } from '@fairgarden/indicators/withFairGardenIndicators'
+// With the extension: Next loads this file with Node itself, which resolves
+// a relative import only when it has one.
+import { indicators } from './lib/indicators.ts'
+import { BETA_COOKIE_VALUE } from './lib/demo.ts'
 
 // Turbopack resolves nothing outside its root, which it puts at the nearest
 // lockfile or repository: this module's own. Installed from a distribution,
@@ -24,4 +29,8 @@ const nextConfig: NextConfig = {
   turbopack: { root: installRoot },
 }
 
-export default createMDX()(nextConfig)
+// The site runs the library it documents: every page is served through the
+// rewrites, and the demos are the real thing.
+export default withFairGardenIndicators(createMDX()(nextConfig), indicators, {
+  hardFlags: { beta: { values: [BETA_COOKIE_VALUE] } },
+})
