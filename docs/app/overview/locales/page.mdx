@@ -1,0 +1,62 @@
+# Locales
+
+A public URL means one locale. `/login` is the default locale's login page;
+`/fr/login` is French. Neither depends on the browser, so both are one cache
+entry each, and a link to either goes where it says.
+
+## Detection, at the root only
+
+The exception is the site root. A visitor who typed the domain has not
+chosen a locale, and choosing one for them means reading
+`Accept-Language` with its weights — which a rewrite's `has` cannot express.
+So the root takes a proxy, and nothing else does.
+
+```ts
+// proxy.ts
+import { createLocaleProxy } from '@fairgarden/indicators/proxy'
+import { indicators } from './lib/indicators'
+
+export const proxy = createLocaleProxy(indicators)
+export const config = { matcher: ['/'] }
+```
+
+The matcher is written out because Next reads it from the source. A visitor
+the default locale suits goes on to the rewrites untouched; one another locale suits is redirected to `/fr`, and
+from there every link carries the locale. The redirect is temporary and
+sends `Vary: Accept-Language, Cookie`, so a cache in front does not pin one
+answer for everyone.
+
+The negotiation is small on purpose: ranges in order of weight, an exact
+match first, then the same language — `en-GB` finds `en-US` when that is all
+there is, and `en` finds it too — and `*` or no match means the default.
+
+## A chosen locale
+
+A user who picked a locale should not be re-detected every time they land on
+the root. Name a cookie:
+
+```ts
+createIndicators({ locales: ['en', 'fr'], defaultLocale: 'en', localeCookie: 'locale' })
+```
+
+The proxy reads it before the header. It is consulted nowhere else — not by
+the rewrites, not by the links — because `/login` has to stay the default
+locale's page whoever asks for it. The locale a user chose lives in the URLs
+they follow, and that is where a shared link keeps it.
+
+## The default locale's prefix
+
+`localePrefix: 'as-needed'`, the default, keeps the default locale out of
+the URL: `/login`, and `/en/login` redirects to it permanently.
+`'always'` prefixes every locale, and an unprefixed path redirects to the
+default locale instead. The root is left to the proxy either way, and with
+`'always'` the proxy redirects there for the default locale too.
+
+## Links
+
+The `Link` from [`createNavigation`](/functions/createNavigation) reads the
+page's locale from its route params and prefixes hrefs accordingly, so
+`<Link href="/settings">` is `/settings` on an English page and
+`/fr/settings` on a French one. To link across, `<Link href="/" locale="fr">`.
+A path that already starts with a locale, or with an excluded segment such
+as `/api`, is left alone.

@@ -1,0 +1,35 @@
+# `read`
+
+```ts
+indicators.read(params): Promise<{ locale, prefs, flags }>
+indicators.locale.read(params): Promise<Locale>
+indicators.prefs.read(params): Promise<Prefs>
+indicators.flags.read(params): Promise<Flags>
+```
+
+What a route's params name. `params` is the promise Next passes to a layout
+or page, or an already resolved object.
+
+```tsx
+export default async function Page({ params }: PageProps<'/[locale]/[prefs]/[flags]/login'>) {
+  const { locale, prefs, flags } = await indicators.read(params)
+  return <Form locale={locale} theme={prefs.theme ?? 'system'} />
+}
+```
+
+`prefs` and `flags` are objects keyed by indicator, each value one of its
+names or `undefined`, typed from the config. The combined form needs all
+three params, so it belongs at or below the flags segment; the per-level
+forms need only their own.
+
+## Not found
+
+A value the config cannot decode calls `notFound()`: an unsupported locale,
+an unknown key or value, or a segment that is not in
+[canonical form](/overview/paths). The nearest `not-found.tsx` renders.
+This is deliberate — see [Layouts](/overview/layouts).
+
+## Notes
+
+Only the params are read. Nothing here touches `cookies()` or `headers()`,
+which is what keeps the page static.

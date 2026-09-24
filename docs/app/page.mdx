@@ -1,0 +1,80 @@
+# @fairgarden/indicators
+
+Put the locale, the user's preferences and the request's flags into the path,
+so every variant of a page is a plain static route.
+
+```
+/login  +  cookie theme=dark  +  X-Vercel-IP-Timezone: America/New_York
+-> /en/theme~dark/tz~EST/login
+```
+
+Next caches by path. Cookies and headers are not part of the key, and reading
+them from a page makes it dynamic. Rewriting them into the path keeps the
+page static and gives each audience its own copy: the hot path stays one
+prerendered file, the long tail renders once on demand, and nothing is
+rendered per request.
+
+```ts
+// lib/indicators.ts
+import { createIndicators } from '@fairgarden/indicators'
+
+export const indicators = createIndicators({
+  locales: ['en', 'fr'],
+  defaultLocale: 'en',
+  prefs: { theme: { values: ['light', 'dark'] } },
+  flags: {
+    tz: {
+      header: 'x-vercel-ip-timezone',
+      values: { EST: 'America/(New_York|Toronto|Detroit)' },
+    },
+  },
+})
+```
+
+```ts
+// next.config.ts
+import { withFairGardenIndicators } from '@fairgarden/indicators/withFairGardenIndicators'
+import { indicators } from './lib/indicators.ts'
+
+export default withFairGardenIndicators(nextConfig, indicators)
+```
+
+```tsx
+// app/[locale]/[prefs]/[flags]/layout.tsx
+export const generateStaticParams = indicators.generateStaticParams
+
+export default indicators.layout(({ children, locale, prefs }) => (
+  <html lang={locale} data-theme={prefs.theme}>
+    <body>{children}</body>
+  </html>
+))
+```
+
+## Start here
+
+- [Overview](/overview) — what a request goes through
+- [Indicators](/overview/indicators) — preferences, flags, and why they are kept apart
+- [Paths](/overview/paths) — the segments, and why they are the cache key
+- [Rewrites](/overview/rewrites) — how a cookie becomes a path segment
+- [Static generation](/overview/static) — prerendering every variant, and routes that switch on a flag
+- [Locales](/overview/locales) — detection at the root, and nowhere else
+- [Layouts](/overview/layouts) — where the root layout goes, and what each level reads
+- [In a monolith](/overview/monolith) — mounting an app that uses this
+- [Functions](/functions) — the API
+
+## Install
+
+```bash
+pnpm add @fairgarden/indicators
+```
+
+| Import | For |
+| --- | --- |
+| `@fairgarden/indicators` | `lib/indicators.ts`, layouts and pages |
+| `@fairgarden/indicators/withFairGardenIndicators` | `next.config.ts` |
+| `@fairgarden/indicators/link` | a client module exporting the app's `Link` and hooks |
+| `@fairgarden/indicators/proxy` | `proxy.ts` |
+
+Mounting several apps into one deployment is a separate concern, handled by
+`@fairgarden/monolith`; see [In a monolith](/overview/monolith) for how the
+two fit.

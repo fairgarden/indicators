@@ -1,0 +1,118 @@
+# Static generation
+
+Every segment is a dynamic route param, so prerendering a variant is
+ordinary `generateStaticParams`. What is prerendered is decided by the
+config, not by each page.
+
+## Every variant, from one layout
+
+A layout below all three segments can generate params for all of them at
+once — Next lets a child generate params for the segments above it.
+
+```tsx
+// app/[locale]/[prefs]/[flags]/layout.tsx
+export const generateStaticParams = indicators.generateStaticParams
+```
+
+For two locales, a `theme` with two values and a `tz` with one, that is
+`2 × 3 × 2 = 12` combinations, and every page below the layout is
+prerendered for each of them.
+
+## One level at a time
+
+With a layout at each level, each exports its own:
+
+```tsx
+// app/[locale]/layout.tsx
+export const generateStaticParams = indicators.locale.generateStaticParams
+// app/[locale]/[prefs]/layout.tsx
+export const generateStaticParams = indicators.prefs.generateStaticParams
+// app/[locale]/[prefs]/[flags]/layout.tsx
+export const generateStaticParams = indicators.flags.generateStaticParams
+```
+
+Next runs them top down and multiplies them, which comes to the same thing.
+
+## The long tail
+
+Not every indicator has to multiply the build. A flag that lumps
+`Accept-Language` into a handful of names is worth prerendering; one with
+twenty values across three other indicators is not.
+
+```ts
+flags: {
+  lang: { header: 'accept-language', values: { fr: 'fr.*', de: 'de.*' }, prerender: false },
+}
+```
+
+A value with `prerender: false` is left out of `generateStaticParams`, and
+nothing else changes: `dynamicParams` is on by default, so a variant that was
+not prerendered renders on its first request and is cached from then on.
+Turn `dynamicParams` off only if every variant really is listed; a request
+for any other would then be a 404.
+
+## A route that switches on a flag
+
+A flags segment is a literal string, and Next prefers a literal route
+segment to a dynamic one. So this is a page of its own:
+
+```
+app/[locale]/[prefs]/[flags]/login/page.tsx       the usual login page
+app/[locale]/[prefs]/beta~on/login/page.tsx       the one for the beta cohort
+```
+
+With `flags: { beta: { cookie: 'beta', values: ['on'] } }`, a request
+carrying that cookie is rewritten to `/en/-/beta~on/login` and lands on the
+second file. It is prerendered like any other page, for every locale and
+preference combination above it, and the cohort is switched on and off by
+writing a cookie — no branch in the component, no runtime read.
+
+The directory name is the [canonical segment](/overview/paths): sorted keys,
+`.` between pairs. Use `indicators.flags.encode({ beta: 'on' })` to get it
+right. Three things follow from it being a literal:
+
+- It matches one exact combination. A request carrying `beta~on` *and*
+  `tz~EST` is rewritten to `beta~on.tz~EST`, which is not that directory, and
+  falls through to `[flags]`. Give a route-switching flag its own segment
+  kind, or accept that other flags on the same segment defeat it.
+- `[flags]`'s `generateStaticParams` still lists `beta~on`, and the dynamic
+  route is prerendered for it too — the build shows `/en/-/beta~on/login`
+  under both. Next serves the literal one, so the extra build work is wasted
+  rather than wrong.
+- It sits *beside* `[flags]`, so it does not inherit a layout placed inside
+  `[flags]`. With the [root layout](/overview/layouts) at the flags level,
+  the literal directory needs a root layout of its own, which the per-level
+  readers make short:
+
+```tsx
+// app/[locale]/[prefs]/beta~on/layout.tsx
+export const generateStaticParams = () =>
+  indicators.locale.generateStaticParams().flatMap(({ locale }) =>
+    indicators.prefs.generateStaticParams().map(({ prefs }) => ({ locale, prefs }))
+  )
+
+export default async function BetaLayout({ children, params }: LayoutProps<'/[locale]/[prefs]/beta~on'>) {
+  const locale = await indicators.locale.read(params)
+  const prefs = await indicators.prefs.read(params)
+  return (
+    <html lang={locale} data-theme={prefs.theme}>
+      <body>{children}</body>
+    </html>
+  )
+}
+```
+
+An app that switches routes on flags often may prefer the root layout at
+`[locale]` or `[prefs]`, above the fork, so nothing has to be repeated.
+
+The same works one level up, for a preference: `app/[locale]/theme~dark/…`
+is a page tree that only the dark theme sees, and its layout then reads the
+locale alone.
+
+## What makes a page dynamic anyway
+
+Prerendering happens only if the page does not opt out. `cookies()`,
+`headers()`, `searchParams` read outside a Suspense boundary, and
+`useSearchParams` in a client component without one all make the route
+dynamic — for every variant. Everything this library needs is in the params,
+so a page that stays with `read` and the layout wrappers stays static.

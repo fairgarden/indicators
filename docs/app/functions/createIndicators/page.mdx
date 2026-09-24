@@ -1,0 +1,96 @@
+# `createIndicators`
+
+```ts
+createIndicators<const C extends IndicatorsConfig>(config: C): Indicators<C>
+```
+
+Declare what goes into the path. The result is what every other part of the
+library is given: `next.config.ts`, layouts, pages, the client module, the
+proxy.
+
+```ts
+// lib/indicators.ts
+import { createIndicators } from '@fairgarden/indicators'
+
+export const indicators = createIndicators({
+  locales: ['en', 'fr-CA', 'fr'],
+  defaultLocale: 'en',
+  prefs: {
+    theme: { values: ['light', 'dark'] },
+    tz: { cookie: 'timezone', values: { EST: 'America/(New_York|Toronto)', PST: 'America/Los_Angeles' } },
+  },
+  flags: {
+    tz: { header: 'x-vercel-ip-timezone', values: { EST: 'America/(New_York|Toronto)' } },
+    lang: { header: 'accept-language', values: { fr: 'fr.*' }, prerender: false },
+    beta: { cookie: 'beta', values: ['on'] },
+  },
+  exclude: ['oidc'],
+})
+```
+
+The config is checked when the module loads, so a mistake fails the build
+and not a request. The generic is `const`, so the types of `read`,
+`useIndicators` and `Link`'s `locale` prop are as narrow as what was written:
+`prefs.theme` is `'light' | 'dark' | undefined`.
+
+## Config
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `locales` | — | every locale served, as it appears in the path |
+| `defaultLocale` | — | the one served when the path names none; must be listed |
+| `localePrefix` | `'as-needed'` | `'always'` prefixes the default locale too. See [Locales](/overview/locales) |
+| `localeCookie` | — | a cookie the proxy reads before `Accept-Language` |
+| `prefs` | `{}` | choices the user made, keyed by the name that goes in the path |
+| `flags` | `{}` | facts about the request, likewise |
+| `exclude` | `[]` | top-level paths never localized, besides `_next`, `api` and `.well-known` |
+
+A locale is letters and digits with `-` between subtags: `en`, `fr-CA`. Keys
+are letters, digits, `_` and `-`, starting with a letter or digit.
+Duplicates, a default that is not listed, and a locale that is also excluded
+are refused.
+
+## An indicator
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `values` | — | an array of literal values, or a record of name to pattern |
+| `cookie` | the key, for a preference | read from this cookie |
+| `header` | the key, for a flag | read from this header |
+| `query` | — | read from this query parameter |
+| `prerender` | `true` | include in `generateStaticParams` |
+| `maxAge` | one year | seconds a cookie written by `usePref` lives |
+
+Exactly one of `cookie`, `header` and `query`. A value is letters, digits,
+`_` and `-`, starting with a letter or digit — nothing a URL would
+percent-encode, see [Paths](/overview/paths).
+
+**Literal values** match the cookie or header exactly. **Patterns** are
+regular expressions matched against the whole raw value — the same way Next
+matches `has` — so `'fr.*'` means *starts with fr* and `'fr'` means *is
+fr*. When several patterns of one indicator would match, the first listed
+wins.
+
+## The result
+
+Besides what the pages below describe, the object carries the resolved
+config and a few facts:
+
+| Member | |
+| --- | --- |
+| `config` | the config with defaults filled in and indicators sorted by key |
+| `locales`, `defaultLocale` | as given, typed to the literals |
+| `isLocale(value)` | a type guard for a supported locale |
+| `locale`, `prefs`, `flags` | the [per-level](/functions/generateStaticParams) objects |
+
+## Types
+
+`Indicators<C>`, `Locale<C>`, `Prefs<C>`, `Flags<C>` and `Resolved<C>`
+name the pieces for an app that wants to type its own helpers:
+
+```ts
+import type { Prefs } from '@fairgarden/indicators'
+import type { indicators } from './indicators'
+
+type Theme = Prefs<typeof indicators.config>['theme']
+```

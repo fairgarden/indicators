@@ -1,0 +1,67 @@
+# Indicators
+
+Metadata about a user is not enough to know what they want. It is enough to
+*suggest* something. Metadata that is useful for suggesting an action is an
+indicator.
+
+- the language the browser asks for
+- the timezone the request came from
+- the region, from the IP
+- the device, or the connection — `Save-Data`, a 5G hint
+- being inside a private network
+- `DNT`, or `Sec-GPC`
+
+## Why these are only indicators
+
+Locale detection is not accurate. A browser may still have the language it
+shipped with, and a traveller in a foreign country does not speak its
+language just because their IP says they are there. The detected language is
+useful for suggesting a switch, and useless for deciding one.
+
+The same holds for time. A detected timezone is a fine reason to ask *is this
+where you are?* and a poor reason to reformat every date without asking.
+
+## Preferences
+
+A preference is a choice the user made: they set a theme, they picked a
+currency, they confirmed a timezone. It is stored in a cookie and it is
+theirs to change.
+
+## Flags
+
+A flag is a fact about the request. It comes from a header the client or the
+edge added, and the user did not choose it. It may be an environmental fact —
+the timezone the IP resolves to — or a flag in the other sense: a feature
+flag, which a cookie carries but which the *app* switches on, not the user.
+
+## Why keep them apart
+
+Sometimes a user has no control over an indicator. The timezone the request
+came from is not the one they would pick; the language their browser sends is
+not the one they read. The app wants both: the preference to render with, and
+the flag to offer a change against.
+
+```tsx
+const { locale, flags } = await indicators.read(params)
+
+{flags.lang === 'fr' && locale !== 'fr' && (
+  <p>Cette page existe en français. <Link href="/" locale="fr">Y aller</Link></p>
+)}
+```
+
+Putting both in the path lets a static page do that. The banner is part of
+the `lang~fr` variant, rendered once and cached, and a visitor whose browser
+asks for French sees it without the page ever reading a header.
+
+## What goes where
+
+| | Preference | Flag |
+| --- | --- | --- |
+| means | a choice | an observation |
+| default source | a cookie of the same name | a header of the same name |
+| who sets it | the user, through `usePref` | the client, the edge, or the app |
+| path segment | second | third |
+
+The source is a default, not a rule. A feature flag reads from a cookie, and
+`flags: { beta: { cookie: 'beta', values: ['on'] } }` says so. What decides
+the kind is the meaning, because that is what a page does with it.

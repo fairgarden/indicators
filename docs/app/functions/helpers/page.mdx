@@ -1,0 +1,51 @@
+# Helpers
+
+The pieces `createIndicators` is built from, exported for tests and tooling.
+None of them read the environment.
+
+## Negotiation
+
+```ts
+parseAcceptLanguage(header): { tag: string; quality: number }[]
+negotiateLocale(header, locales, defaultLocale): string
+```
+
+`parseAcceptLanguage` returns the ranges best first, in the header's order
+for equal weights, dropping malformed entries and `q=0`. `negotiateLocale`
+is [`negotiate`](/functions/href) for any list of locales.
+
+## Paths
+
+```ts
+localizePath(config, pathname, locale): string
+localizeHref(config, href, locale): Href
+mountHref(href, mount): Href
+```
+
+`config` is `indicators.config`. `mountHref` moves a path under a mount by
+the rule `prefixHref` in `@fairgarden/monolith/link` uses: only paths
+rooted at `/`, never twice, and `/identity` is not under `/id`.
+
+## Routes
+
+```ts
+indicatorsRewrites(config, options?): Rewrite[]
+indicatorsRedirects(config, options?): Redirect[]
+```
+
+And from `@fairgarden/indicators/withFairGardenIndicators`:
+
+```ts
+detectExclusions(root): { exclude: string[]; excludeStems: string[] }
+```
+
+What [`withFairGardenIndicators`](/functions/withFairGardenIndicators)
+puts into the config, as data: the [chain](/overview/rewrites) and the
+redirects, and what a look at an app directory adds to `options.exclude`
+and `options.excludeStems`. Useful for asserting on the exact routes, or
+for feeding them to Next's `checkCustomRoutes` in a test.
+
+## Constants
+
+`ALWAYS_EXCLUDED` is `['_next', 'api', '.well-known']`, and
+`EMPTY_SEGMENT` is `'-'`.

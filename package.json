@@ -1,0 +1,69 @@
+{
+  "name": "@fairgarden/indicators",
+  "version": "0.1.0-alpha.0",
+  "packageManager": "pnpm@10.28.0+sha512.05df71d1421f21399e053fde567cea34d446fa02c76571441bfc1c7956e98e363088982d940465fd34480d4d90a0668bc12362f8aa88000a64e83d0b0e47be48",
+  "description": "Put locale, preferences and flags into the path, so every variant of a Next.js page is a static cache key",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fairgarden/indicators.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "UNLICENSED",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./withFairGardenIndicators": {
+      "types": "./dist/withFairGardenIndicators.d.ts",
+      "default": "./dist/withFairGardenIndicators.js"
+    },
+    "./link": {
+      "types": "./dist/link.d.ts",
+      "default": "./dist/link.js"
+    },
+    "./proxy": {
+      "types": "./dist/locale-proxy.d.ts",
+      "default": "./dist/locale-proxy.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch --preserveWatchOutput",
+    "lint": "eslint",
+    "test": "node --import ./test/resolve-next.mjs --test test/*.test.js",
+    "canary": "fg-dist canary",
+    "release": "fg-dist release",
+    "release:check": "fg-dist release --check"
+  },
+  "devDependencies": {
+    "@fairgarden/distribution": "^0.1.0-alpha.0",
+    "@types/node": "^26.6.2",
+    "@types/react": "^19.3.0",
+    "@typescript-eslint/eslint-plugin": "^8.70.0",
+    "@typescript-eslint/parser": "^8.70.0",
+    "eslint": "^9.39.5",
+    "next": "^16.3.5",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "next": ">=15",
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  }
+}

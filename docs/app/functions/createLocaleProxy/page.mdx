@@ -1,0 +1,66 @@
+# `createLocaleProxy`
+
+```ts
+createLocaleProxy(indicators: Indicators, options?: { mount?: string }): LocaleProxy
+createLocaleProxy(mounts: Record<string, Indicators>): LocaleProxy
+
+interface LocaleProxy {
+  (request: NextRequest): NextResponse
+  matcher: string[]
+}
+```
+
+A `proxy.ts` that negotiates the locale at the site root, and matches
+nothing else. See [Locales](/overview/locales) for why the root, and only
+the root, needs one.
+
+```ts
+// proxy.ts
+import { createLocaleProxy } from '@fairgarden/indicators/proxy'
+import { indicators } from './lib/indicators'
+
+export const proxy = createLocaleProxy(indicators)
+export const config = { matcher: ['/'] }
+```
+
+The matcher keeps the proxy off every other request, and it has to be
+written out: Next reads `config` from the source at build time and ignores a
+computed value, which would leave the proxy running for everything. The
+function carries the same list as `proxy.matcher`, for a test to check the
+two agree.
+
+## What it does at the root
+
+1. Reads `localeCookie`, if the config names one, and takes its value when
+   it is a supported locale.
+2. Otherwise negotiates from `Accept-Language` —
+   see [`negotiate`](/functions/href).
+3. If the result is the default locale and `localePrefix` is `as-needed`,
+   returns `NextResponse.next()`: the rewrites serve the root as they would
+   any path.
+4. Otherwise redirects to `/<locale>`, keeping the query string, with status
+   307 and `Vary: Accept-Language, Cookie`.
+
+## Mounted
+
+```ts
+export const proxy = createLocaleProxy(indicators, { mount: '/id' })
+export const config = { matcher: ['/id'] }
+```
+
+A redirect then goes to `/id/fr`. A monolith gives it every app at once,
+keyed by mount:
+
+```ts
+// apps/monolith/proxy.ts
+export const proxy = createLocaleProxy({ '/': www, '/id': id })
+export const config = { matcher: ['/', '/id'] }
+```
+
+Each app negotiates among its own locales. See
+[In a monolith](/overview/monolith).
+
+## Notes
+
+It imports `next/server`, which is why it is an entry point of its own:
+`@fairgarden/indicators` itself stays importable from a client module.

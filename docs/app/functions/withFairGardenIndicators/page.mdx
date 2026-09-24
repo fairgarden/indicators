@@ -1,0 +1,70 @@
+# `withFairGardenIndicators`
+
+```ts
+withFairGardenIndicators(
+  nextConfig: NextConfig,
+  indicators: Indicators,
+  options?: PluginOptions
+): NextConfig
+```
+
+Adds the [rewrites](/overview/rewrites) and redirects. Everything else in
+the config is returned as it was.
+
+```ts
+// next.config.ts
+import type { NextConfig } from 'next'
+import { withFairGardenIndicators } from '@fairgarden/indicators/withFairGardenIndicators'
+import { indicators } from './lib/indicators.ts'
+
+const nextConfig: NextConfig = {
+  rewrites: async () => ({
+    beforeFiles: [{ source: '/oidc/:path*', destination: '/api/oidc/:path*' }],
+  }),
+}
+
+export default withFairGardenIndicators(nextConfig, indicators)
+```
+
+The app's own `beforeFiles` rewrites run first, then the chain; the app's
+redirects come first too. A bare `rewrites` array is treated as `afterFiles`,
+as Next does.
+
+## Options
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `root` | the directory of the calling `next.config` | where to look for `public/` and `app/` |
+| `detectExclusions` | `true` | look at the app for paths to leave alone |
+
+`root` defaults to the config file's directory rather than the working
+directory, because a monolith loads an app's config from the monolith's own
+directory and would otherwise inspect the wrong app.
+
+## What it detects
+
+With `detectExclusions` on, the plugin reads `public/` and the top of `app/`
+(or `src/app/`) and keeps the paths it finds there out of the locale
+rewrite: static files, top-level routes such as `api/`, and the metadata
+files Next serves under another extension. See
+[Rewrites](/overview/rewrites) for the list. Set it to `false` to name every
+excluded path in the config's `exclude` instead.
+
+## Why a separate entry point
+
+Next loads `next.config.ts` with Node itself, and this function reads the
+file system, so it lives apart from `@fairgarden/indicators`: the main entry
+is what `lib/indicators.ts` imports, and that module is bundled for the
+client too. The `.ts` extension on the local import is for the same loader,
+which resolves a relative import only with one; set
+`allowImportingTsExtensions` in the app's `tsconfig.json`.
+
+## In a monolith
+
+Nothing here goes into `env`, and rewrites and redirects are the two things
+a monolith merges, so the result mounts like any app's config. Wrap it with
+`withMonolithicPortability` as usual:
+
+```ts
+export default withMonolithicPortability(withFairGardenIndicators(nextConfig, indicators))
+```

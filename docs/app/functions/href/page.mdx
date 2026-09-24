@@ -1,0 +1,52 @@
+# `href`, `splitLocale`, `negotiate`
+
+Locale-aware paths without React, for server code.
+
+## `href`
+
+```ts
+indicators.href(href: Href, locale: Locale): Href
+```
+
+What [`Link`](/functions/createNavigation) does to an href, minus the mount:
+the locale is prefixed by the [`localePrefix`](/overview/locales) rules, and
+anything that is not an app-relative path is left alone.
+
+```ts
+indicators.href('/login', 'fr')   // '/fr/login'
+indicators.href('/login', 'en')   // '/login', with the default as-needed
+redirect(indicators.href('/login', locale))
+```
+
+For the mount as well, pass the result through `createHref` from
+`@fairgarden/monolith/link`.
+
+## `splitLocale`
+
+```ts
+indicators.splitLocale(pathname: string): { locale: Locale | undefined; pathname: string }
+```
+
+The locale a public path starts with, and the path without it.
+
+```ts
+indicators.splitLocale('/fr/login')   // { locale: 'fr', pathname: '/login' }
+indicators.splitLocale('/login')      // { locale: undefined, pathname: '/login' }
+```
+
+## `negotiate`
+
+```ts
+indicators.negotiate(acceptLanguage: string | null | undefined): Locale
+```
+
+The supported locale an `Accept-Language` header asks for, or the default.
+This is what the [proxy](/functions/createLocaleProxy) uses. Ranges are
+taken in order of weight; the first that matches a locale exactly wins,
+then the first whose language matches — preferring the bare language, then
+the first region of it; `*` and no match mean the default.
+
+```ts
+indicators.negotiate('fr-CA,fr;q=0.9,en;q=0.5')   // 'fr-CA' if listed, else 'fr'
+indicators.negotiate('de')                        // the default
+```

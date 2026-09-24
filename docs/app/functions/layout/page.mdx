@@ -1,0 +1,51 @@
+# `layout` and `page`
+
+```ts
+indicators.layout(render): (props: LayoutProps) => Promise<ReactNode>
+indicators.locale.layout(render)
+indicators.prefs.layout(render)
+indicators.flags.layout(render)
+
+indicators.page(render): (props: PageProps) => Promise<ReactNode>
+```
+
+[`read`](/functions/read) as a wrapper. The result is a layout or page
+component; `render` gets `children` (for a layout), the resolved `params`,
+and the values.
+
+```tsx
+// app/[locale]/[prefs]/[flags]/layout.tsx
+export default indicators.layout(({ children, locale, prefs, flags }) => (
+  <html lang={locale} data-theme={prefs.theme}>
+    <body>{children}</body>
+  </html>
+))
+```
+
+```tsx
+// app/[locale]/layout.tsx
+export default indicators.locale.layout(({ children, locale }) => (
+  <html lang={locale}><body>{children}</body></html>
+))
+```
+
+```tsx
+// app/[locale]/[prefs]/[flags]/login/page.tsx
+export default indicators.page(async ({ locale, searchParams }) => {
+  const { next } = await searchParams
+  return <LoginForm locale={locale} returnTo={next} />
+})
+```
+
+`render` may be async. For a page, `searchParams` is passed through as the
+promise Next gave, since reading it is what makes a page dynamic and that
+should be the page's decision.
+
+Other params in the route — a `[slug]` below the segments — are on `params`,
+resolved.
+
+## Notes
+
+A wrapper does nothing `read` would not; use whichever reads better. What it
+guarantees is that an invalid segment is a 404 before any of the layout
+runs.

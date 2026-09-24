@@ -1,0 +1,75 @@
+# Rewrites
+
+[`withFairGardenIndicators`](/functions/withFairGardenIndicators) adds a
+chain of rewrites to `next.config.ts`. They go in `beforeFiles`, the one
+phase where Next keeps applying rewrites after one has matched — each sees
+the path the previous ones produced. That is what makes this a chain of small
+steps rather than one rewrite per combination of values.
+
+## The chain
+
+For `locales: ['en', 'fr']`, a `theme` preference and a `tz` flag:
+
+```
+1  /                    -> /en                         a path without a locale
+   /:path((?!en|fr|_next|api|…).+) -> /en/:path        gets the default one
+2  /:locale(en|fr)/:path*   -> /:locale/-/-/:path*      empty segments
+3  /:locale/:prefs/:flags/:path*   cookie theme=light   -> /:locale/:prefs.theme~light/:flags/:path*
+   /:locale/:prefs/:flags/:path*   cookie theme=dark    -> /:locale/:prefs.theme~dark/:flags/:path*
+4  /:locale/-.:prefs/:flags/:path*  -> /:locale/:prefs/:flags/:path*   strip the marker
+3  /:locale/:prefs/:flags/:path*   header x-vercel-ip-timezone America/(New_York|…) -> …/:flags.tz~EST/…
+4  /:locale/:prefs/-.:flags/:path*  -> /:locale/:prefs/:flags/:path*
+```
+
+Step 3 is one rewrite per value. Keys are visited in sorted order, so the
+pairs come out sorted, and each rewrite's source refuses a segment that
+already has its key, so the first value whose pattern matches wins. The
+number of rewrites grows with the number of values, not combinations.
+
+`has` matches the whole cookie or header value, as Next does — the pattern is
+anchored at both ends — so a listed value has to be exact and a pattern has
+to cover the whole string.
+
+## What is left alone
+
+A path that starts with a locale gets no locale. A path that starts with
+`_next`, `api` or `.well-known` never does, nor does anything in the config's
+`exclude`. The plugin also looks at the app:
+
+- every entry of `public/`, since a file there is served at its own name
+- every directory at the top of `app/` that is not a dynamic segment, such
+  as `app/api/` or a health check, since a route up there is outside the
+  locale tree by construction
+- metadata files at the top of `app/` — `sitemap.ts`, `robots.ts`,
+  `manifest.ts`, the icons — which Next serves under the same name with
+  another extension
+
+A route group or a parallel slot at the top of `app/` could hold anything, so
+those are not inspected; name what they serve in `exclude`.
+
+`beforeFiles` runs before the filesystem is checked, which is exactly why
+this matters: a rewrite that caught `/favicon.ico` would send it to
+`/en/-/-/favicon.ico`, and nothing is there.
+
+## Internal paths from outside
+
+A request for `/en/-/-/login` — the internal form — is not served. The chain
+inserts the empty segments regardless of what follows the locale, so it
+becomes `/en/-/-/-/-/login`, which matches no route. The internal path is a
+cache key, not an address.
+
+## Redirects
+
+With the default `localePrefix: 'as-needed'`, `/en` and `/en/…` redirect for
+good to the path without the prefix, so the default locale has one URL per
+page. With `'always'`, an unprefixed path redirects, temporarily, to the
+default locale. The site root is never redirected by config in either mode;
+that is the [proxy's](/overview/locales) call.
+
+## Order
+
+The app's own `beforeFiles` rewrites come first and its redirects come
+first. A path the app's rewrites produce is localized like any other, so an
+app that rewrites `/oidc/:path*` to `/api/oidc/:path*` needs nothing more —
+`api` is excluded — though it should still exclude `oidc` so that its links
+to `/oidc/…` are not localized either.

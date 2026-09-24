@@ -1,0 +1,88 @@
+# Layouts
+
+The three segments are three directories, and any of them can have a layout.
+Which ones should, comes down to one question: where does `<html>` go?
+
+## Where the root layout goes
+
+Next renders `<html>` in the root layout, which is the topmost layout in the
+tree, and a layout below it cannot reach up to add an attribute. So an app
+whose theme is read from `<html data-theme>` — as the FairGarden design
+system does — puts the root layout *below* the preferences segment, and the
+simplest place is below all three:
+
+```tsx
+// app/[locale]/[prefs]/[flags]/layout.tsx
+export const generateStaticParams = indicators.generateStaticParams
+
+export default indicators.layout(({ children, locale, prefs, flags }) => (
+  <html lang={locale} data-theme={prefs.theme}>
+    <body>{children}</body>
+  </html>
+))
+```
+
+There is then no layout at `[locale]` or `[prefs]`, and nothing is lost:
+`generateStaticParams` covers all three segments from here, and every page
+below has `locale`, `prefs` and `flags` in its params.
+
+An app whose theme lives on an element inside `<body>` can keep a layout per
+level instead:
+
+```tsx
+// app/[locale]/layout.tsx
+export const generateStaticParams = indicators.locale.generateStaticParams
+export default indicators.locale.layout(({ children, locale }) => (
+  <html lang={locale}><body>{children}</body></html>
+))
+
+// app/[locale]/[prefs]/layout.tsx
+export const generateStaticParams = indicators.prefs.generateStaticParams
+export default indicators.prefs.layout(({ children, prefs }) => (
+  <div data-theme={prefs.theme}>{children}</div>
+))
+
+// app/[locale]/[prefs]/[flags]/layout.tsx
+export const generateStaticParams = indicators.flags.generateStaticParams
+export default indicators.flags.layout(({ children, flags }) => (
+  <>{flags.lang && <LanguageBanner suggests={flags.lang} />}{children}</>
+))
+```
+
+## Reading without the wrapper
+
+The wrappers are a convenience over [`read`](/functions/read), which any
+layout or page can call itself:
+
+```tsx
+export default async function Page({ params }: PageProps<'/[locale]/[prefs]/[flags]/login'>) {
+  const { locale, prefs, flags } = await indicators.read(params)
+  // ...
+}
+```
+
+`read` accepts the params promise Next passes, or an already resolved
+object. `indicators.locale.read`, `.prefs.read` and `.flags.read` read one
+segment each, for a layout that only has that segment in its params.
+
+## Not found
+
+A segment the config cannot decode is a 404. That covers an unsupported
+locale, an unknown key or value, and a segment that is not in canonical
+form — `tz~EST.theme~dark`, say, when `theme~dark.tz~EST` is the one the
+rewrites produce. Accepting the other spelling would mean two cache entries
+for one page; refusing it means a crafted URL cannot make one.
+
+`read` calls Next's `notFound()` for these, so the nearest `not-found.tsx`
+renders. Thrown from the root layout, that is the app's global one.
+
+## Client components
+
+Nothing has to be provided from a layout. A client component reads the
+same params through `useParams`, and the hooks from
+[`createNavigation`](/functions/createNavigation) decode them:
+
+```tsx
+const { locale, prefs, flags } = useIndicators()
+const [theme, setTheme] = usePref('theme')
+```

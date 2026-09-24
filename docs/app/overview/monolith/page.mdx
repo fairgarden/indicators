@@ -1,0 +1,74 @@
+# In a monolith
+
+`@fairgarden/monolith` mounts several apps into one deployment, each under a
+prefix, and merges their `rewrites`, `redirects` and `headers` with that
+prefix applied. An app using this library needs three things to survive
+that.
+
+## The config merges
+
+`withFairGardenIndicators` only adds rewrites and redirects, which the
+monolith knows how to merge, and puts nothing in `env` or anywhere else it
+would refuse. The chain comes out under the mount:
+
+```
+/:path((?!en|fr|…).+)  -> /en/:path      in the app
+/id/:path((?!en|fr|…).+)  -> /id/en/:path   in the monolith
+```
+
+Every source and destination is prefixed, `has` conditions ride along, and
+the chain works unchanged because every step is relative to what follows the
+mount.
+
+The monolith loads each app's `next.config.ts` with Node itself, which
+resolves a relative import only with its extension. Import the config's
+module as `./lib/indicators.ts`, with `allowImportingTsExtensions` in the
+app's `tsconfig.json`.
+
+## Links carry the mount
+
+The app's `Link` applies the locale first and the mount second, and the mount
+comes from the monolith's own helper:
+
+```ts
+// lib/link.ts
+'use client'
+import { createNavigation } from '@fairgarden/indicators/link'
+import { mountPrefix } from '@fairgarden/monolith/link'
+import { indicators } from '@fairgarden/id/lib/indicators'
+
+export const { Link, useHref, useIndicators, useLocale, usePref } = createNavigation(
+  indicators,
+  { mount: mountPrefix('@fairgarden/id') }
+)
+```
+
+`<Link href="/settings">` on a French page is `/fr/settings` standalone and
+`/id/fr/settings` mounted. `mountPrefix` is `''` when the app runs on its
+own, so the same module works either way; it reads `MONOLITH_MOUNTS`, which
+the monolith inlines into the bundle.
+
+## The proxy moves
+
+A deployment has one proxy, so an app's `proxy.ts` is not mounted — the
+monolith's portability check says so. The monolith runs detection for every
+app it serves, at each app's root:
+
+```ts
+// apps/monolith/proxy.ts
+import { createLocaleProxy } from '@fairgarden/indicators/proxy'
+import { indicators as www } from '@acme/www/lib/indicators'
+import { indicators as id } from '@fairgarden/id/lib/indicators'
+
+export const proxy = createLocaleProxy({ '/': www, '/id': id })
+export const config = { matcher: ['/', '/id'] }
+```
+
+A redirect from `/id` then goes to `/id/fr`. An app's own `proxy.ts` stays for running it standalone.
+
+## Cookies are shared
+
+A preference cookie is written with `Path=/`, so a theme chosen in one app
+holds in every app of the monolith — which is what a user of one site
+expects. Apps that share a cookie should agree on its values, or read
+different cookies.

@@ -1,0 +1,38 @@
+# Functions
+
+## `@fairgarden/indicators`
+
+For `lib/indicators.ts`:
+
+- [`createIndicators`](/functions/createIndicators) — declare the locales, preferences and flags
+
+On the object `createIndicators` returns, for layouts and pages:
+
+- [`generateStaticParams`](/functions/generateStaticParams) — the variants to prerender, all at once or per level
+- [`read`](/functions/read) — the locale, preferences and flags a route's params name
+- [`layout` and `page`](/functions/layout) — the same, as a wrapper
+- [`encode` and `decode`](/functions/encode) — a segment from values, and back
+- [`href`, `splitLocale`, `negotiate`](/functions/href) — locale-aware paths, server side
+
+Standalone, for tests and tooling:
+
+- [Helpers](/functions/helpers) — `negotiateLocale`, `localizeHref`, `mountHref`, `indicatorsRewrites` and friends
+
+## `@fairgarden/indicators/withFairGardenIndicators`
+
+For `next.config.ts`:
+
+- [`withFairGardenIndicators`](/functions/withFairGardenIndicators) — add the rewrites and redirects
+- [`detectExclusions`](/functions/helpers) — what a look at the app keeps out of the locale rewrite
+
+## `@fairgarden/indicators/link`
+
+For a client module such as `lib/link.ts`:
+
+- [`createNavigation`](/functions/createNavigation) — `Link`, `useHref`, `useIndicators`, `useLocale` and `usePref`, bound to the app's config
+
+## `@fairgarden/indicators/proxy`
+
+For `proxy.ts`:
+
+- [`createLocaleProxy`](/functions/createLocaleProxy) — language negotiation at the site root

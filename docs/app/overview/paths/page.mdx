@@ -1,0 +1,75 @@
+# Paths
+
+Next derives a cache key from the request path. Headers and cookies are not
+in it, which is good — the key stays small — and it means anything a page
+reads from them is either not cached or cached wrong. The way out is to
+choose what goes into the key, by putting it into the path.
+
+## The most specific key
+
+```
+/en-US/cur=USD;theme~dark.tz~EST/detected-loc~en-US.geo-tz~America_New_York/blog/announcement
+ [locale] [prefs]                 [flags]                                   [...route]
+```
+
+Each audience gets a copy. A local business with English, Spanish and
+Chinese readers and three theme settings has nine variants of a page, and the
+common one — New York, English, system theme — is one prerendered file. A
+global audience has many more, and the rare ones render on the first request
+and are cached from then on. The data behind them is shared through Next's
+data cache, so a variant costs a render and not a fetch.
+
+## The encoding
+
+A segment is `key~value` pairs joined by `.`, sorted by key, or `-` when
+there are none. Keys and values are letters, digits, `_` and `-`, so
+`America/New_York` becomes `America_New_York`.
+
+The separators are the two of RFC 3986's unreserved characters a key can do
+without, and the restriction on values is the same rule. It is not taste:
+Next percent-encodes a page's params at request time but not at build time,
+so a segment written `theme=dark` reaches the layout as `theme%3Ddark` while
+its prerendered copy sits under `theme=dark`. The two never meet, and the
+canonical check below rejects the encoded form besides. Nothing ever encodes
+`~`, `.`, `_`, `-`, letters or digits.
+
+The order matters. `theme~dark.tz~EST` and `tz~EST.theme~dark` would be two
+cache entries for one page, so only the sorted form is accepted: a request
+whose segment is in any other form is a 404, not a second copy. The rewrites
+build the sorted form, [`generateStaticParams`](/functions/generateStaticParams)
+lists it, and a route directory named after it —
+see [Static generation](/overview/static) — matches it.
+
+## Lumping
+
+The point of a flag is rarely the raw value. Nobody wants a variant per city;
+they want one per timezone, or per language, or per *is this a phone*. A
+flag's values map a name to a pattern the raw value has to match in full:
+
+```ts
+tz: {
+  header: 'x-vercel-ip-timezone',
+  values: {
+    EST: 'America/(New_York|Toronto|Detroit)',
+    PST: 'America/(Los_Angeles|Vancouver)',
+  },
+}
+```
+
+Several cities become one key. A preference can do the same, but usually
+lists its values, since a cookie the app wrote holds one of them exactly.
+
+## Why not `Vary`
+
+`Vary` is a response header, so the key cannot be known before the response
+is. It also puts the whole header value into the key — every distinct
+`Accept-Language` string is a different entry — and it cannot transform
+anything. A rewrite runs before the response, matches with a regular
+expression, and writes only the part that matters.
+
+## Daylight saving time
+
+A timezone in the path names the location, not the offset. When the clocks
+change, a page that formatted times for `tz~EST` is wrong for half the year,
+and the cache has to be purged. That is no loss: nothing rendered before the
+change would have been fetched after it anyway.

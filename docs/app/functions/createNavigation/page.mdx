@@ -1,0 +1,102 @@
+# `createNavigation`
+
+```ts
+createNavigation(indicators: Indicators, options?: NavigationOptions): Navigation
+createLink(indicators: Indicators, options?: NavigationOptions): Navigation['Link']
+```
+
+Links and hooks that know which locale the page is in. Build them once, in a
+client module, and export them:
+
+```ts
+// lib/link.ts
+'use client'
+
+import { createNavigation } from '@fairgarden/indicators/link'
+import { mountPrefix } from '@fairgarden/monolith/link'
+import { indicators } from '@fairgarden/id/lib/indicators'
+
+export const { Link, useHref, useIndicators, useLocale, usePref } = createNavigation(
+  indicators,
+  { mount: mountPrefix('@fairgarden/id') }
+)
+```
+
+The module has to be a client module, because the pieces use hooks and a
+server component can only *render* what a client module exports, not call
+it. Server components import `Link` from the same file and render it as
+usual.
+
+## Options
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `mount` | `''` | the prefix the app is mounted at, applied after the locale |
+| `cookiePath` | `'/'` | the path a cookie written by `usePref` is scoped to |
+
+`mount` is what `mountPrefix` from `@fairgarden/monolith/link` returns:
+`/id` inside a monolith and `''` standalone, so the same module works either
+way. See [In a monolith](/overview/monolith).
+
+## `Link`
+
+`next/link` with two more things done to `href`: the page's locale is
+prefixed by the [`localePrefix`](/overview/locales) rules, then the mount.
+Props are `next/link`'s, plus `locale` to link into another locale.
+
+```tsx
+<Link href="/settings">Settings</Link>
+// English page, standalone: /settings
+// French page, mounted at /id: /id/fr/settings
+
+<Link href="/" locale="fr">Français</Link>
+```
+
+Absolute URLs, fragments, relative paths, a path that already starts with a
+locale, and a path starting with an excluded segment such as `/api` are left
+alone. A file in `public/` is not known to the client, so link to it with
+`<a>` or name it in the config's `exclude`.
+
+## `useHref`
+
+The same computation as a function, for `router.push` and anything else that
+ends up as a string:
+
+```tsx
+const toHref = useHref()
+router.push(toHref('/settings'))
+toHref('/settings', 'fr')
+```
+
+## `useIndicators` and `useLocale`
+
+```tsx
+const { locale, prefs, flags } = useIndicators()
+const locale = useLocale()
+```
+
+Decoded from `useParams()`, which holds the internal path's params. Outside
+the locale tree — a global not-found page, say — the locale is the default
+and the preferences and flags are empty.
+
+## `usePref`
+
+```tsx
+const [theme, setTheme] = usePref('theme')
+
+setTheme('dark')      // cookie theme=dark, then router.refresh()
+setTheme(undefined)   // clears it
+```
+
+Writes the cookie the preference is read from — `Path=/`, `SameSite=Lax`,
+`Secure` on https, `Max-Age` from the indicator's `maxAge` — and refreshes
+the route, so the next render is the variant the cookie now selects. Only a
+cookie-backed preference can be set this way; the setter throws for any
+other.
+
+## Notes
+
+The locale comes from the route params, not from a provider, so nothing has
+to wrap the tree and a `Link` in the root layout's own chrome works. The
+config comes from the module that calls `createNavigation`, so it is bundled
+for the client; keep `lib/indicators.ts` free of server-only imports.

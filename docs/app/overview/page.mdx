@@ -1,0 +1,66 @@
+# Overview
+
+An app declares its locales, its preferences and its flags once, in
+`lib/indicators.ts`. Everything else follows from that declaration: the
+rewrites in `next.config.ts`, the params of the static build, the links, and
+what a layout reads.
+
+## What a request goes through
+
+Take `GET /login` with a `theme~dark` cookie, from a browser in New York.
+
+1. **The proxy** matches only the site root, so it does not run.
+2. **Redirects.** `/login` is already canonical. `/en/login` would have been
+   sent to `/login`, since the default locale stays out of public URLs.
+3. **Rewrites.** In `beforeFiles`, one small step at a time, the path becomes
+   `/en/theme~dark/tz~EST/login`: the default locale, then two empty segments,
+   then each matching cookie or header appends its pair. See
+   [Rewrites](/overview/rewrites).
+4. **The route.** `app/[locale]/[prefs]/[flags]/login/page.tsx` renders, or
+   rather was rendered at build time, because
+   [`generateStaticParams`](/overview/static) listed this combination. The
+   browser's URL is still `/login`.
+
+The layout reads `locale`, `prefs` and `flags` from its params — not from
+cookies or headers, which would make it dynamic — and renders
+`<html lang="en" data-theme="dark">`.
+
+## The three segments
+
+```
+/[locale]/[prefs]/[flags]/...route
+```
+
+| Segment | Holds | Comes from | Example |
+| --- | --- | --- | --- |
+| `[locale]` | one locale | the URL, or negotiation at the root | `fr-CA` |
+| `[prefs]` | choices the user made | cookies | `theme~dark.tz~EST` |
+| `[flags]` | facts about the request | headers | `lang~fr.tz~EST` |
+
+A segment with nothing in it is `-`. The pairs in a segment are sorted by
+key, which is what makes the path a stable cache key — see
+[Paths](/overview/paths).
+
+## What the app has to do
+
+- Declare the indicators with [`createIndicators`](/functions/createIndicators).
+- Wrap `next.config.ts` with
+  [`withFairGardenIndicators`](/functions/withFairGardenIndicators), from
+  its own entry point.
+- Put its routes under `app/[locale]/[prefs]/[flags]/`, and export
+  [`generateStaticParams`](/functions/generateStaticParams) from the layout.
+- Read the params with [`read`](/functions/read) or the
+  [layout wrappers](/functions/layout), never `cookies()` or `headers()`.
+- Link with the `Link` from [`createNavigation`](/functions/createNavigation),
+  so hrefs carry the locale.
+- Ship a `proxy.ts` from [`createLocaleProxy`](/functions/createLocaleProxy)
+  if visitors arrive at the root without a locale.
+
+## What it does not do
+
+It does not translate anything. The locale is a segment and a param; what an
+app does with it is its own business.
+
+It does not read a cookie or header at render time, and nothing here calls
+`cookies()` or `headers()`. If a page needs a value that is not in the path,
+that value is not an indicator yet — declare it, and it becomes one.

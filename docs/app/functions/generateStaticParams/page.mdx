@@ -1,0 +1,34 @@
+# `generateStaticParams`
+
+```ts
+indicators.generateStaticParams(): { locale: string; prefs: string; flags: string }[]
+indicators.locale.generateStaticParams(): { locale: string }[]
+indicators.prefs.generateStaticParams(): { prefs: string }[]
+indicators.flags.generateStaticParams(): { flags: string }[]
+```
+
+The variants to prerender, ready to export from a layout or page. See
+[Static generation](/overview/static) for where each belongs.
+
+```tsx
+// app/[locale]/[prefs]/[flags]/layout.tsx
+export const generateStaticParams = indicators.generateStaticParams
+```
+
+The combined form lists every locale against every preference segment
+against every flag segment. The per-level forms list one segment each, for a
+layout at that level.
+
+## What a segment list holds
+
+Each prerendered indicator is either absent or at one of its values, in
+every combination, sorted so the empty segment comes first:
+
+```ts
+// prefs: theme (light, dark), tz (EST)
+[{ prefs: '-' }, { prefs: 'tz~EST' }, { prefs: 'theme~light' }, { prefs: 'theme~light.tz~EST' }, …]
+```
+
+An indicator with `prerender: false` is left out entirely; its variants
+render on demand. An app that wants a different set writes its own function
+and uses [`encode`](/functions/encode) to spell the segments.

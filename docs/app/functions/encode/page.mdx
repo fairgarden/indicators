@@ -1,0 +1,26 @@
+# `encode` and `decode`
+
+```ts
+indicators.prefs.encode(chosen: Prefs): string
+indicators.prefs.decode(segment: string | undefined): Prefs | undefined
+indicators.flags.encode(chosen: Flags): string
+indicators.flags.decode(segment: string | undefined): Flags | undefined
+```
+
+The [segment encoding](/overview/paths), for an app that spells a segment
+itself: a custom `generateStaticParams`, a route directory that switches on
+a flag, a test.
+
+```ts
+indicators.flags.encode({ tz: 'EST', beta: 'on' })   // 'beta~on.tz~EST'
+indicators.flags.encode({})                          // '-'
+indicators.flags.decode('beta~on.tz~EST')            // { beta: 'on', tz: 'EST' }
+indicators.flags.decode('tz~EST.beta~on')            // undefined — not sorted
+indicators.flags.decode('tz~CET')                    // undefined — not a value
+```
+
+`encode` sorts the keys and throws on a key or value the config does not
+know, since that would name a variant nothing can serve. `decode` returns
+`undefined` for anything that is not exactly what `encode` would produce.
+
+`EMPTY_SEGMENT`, exported from the package, is `'-'`.
