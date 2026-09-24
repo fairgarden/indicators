@@ -1,10 +1,10 @@
 'use client'
 
 import NextLink from 'next/link'
-import { useParams, useRouter } from 'next/navigation'
-import { useCallback, useMemo, type ComponentProps } from 'react'
-import type { IndicatorsConfig } from './config.ts'
-import { localizeHref, mountHref, type Href } from './hrefs.ts'
+import { useParams, usePathname, useRouter } from 'next/navigation'
+import { useCallback, useMemo, type ComponentProps, type MouseEvent } from 'react'
+import { ONE_YEAR, type IndicatorsConfig } from './config.ts'
+import { localizeHref, mountHref, splitLocale, type Href } from './hrefs.ts'
 import type { Flags, Indicators, Locale, Prefs, Resolved } from './indicators.ts'
 
 /**
@@ -26,6 +26,10 @@ import type { Flags, Indicators, Locale, Prefs, Resolved } from './indicators.ts
  *   mount: mountPrefix('@fairgarden/id'),
  * })
  * ```
+ *
+ * A locale the user picks — a `Link` with a `locale` prop they follow, or a
+ * call to `useSetLocale` — is remembered in the locale cookie, which is what
+ * the proxy at the site root reads before the browser's own list.
  */
 
 export interface NavigationOptions {
@@ -46,8 +50,19 @@ export interface NavigationOptions {
 type NextLinkProps = ComponentProps<typeof NextLink>
 
 export type LinkProps<C extends IndicatorsConfig> = Omit<NextLinkProps, 'locale'> & {
-  /** Link into another locale. Defaults to the one the page is in. */
+  /**
+   * Link into another locale. Defaults to the one the page is in. Given
+   * explicitly, following the link also remembers the locale as the user's
+   * choice, unless `remember` is false.
+   */
   locale?: Locale<C>
+  /**
+   * Whether following a link with a `locale` records that locale as the
+   * user's preference. Defaults to true: a link the user picks a language
+   * with is a choice. Set false for a link that merely crosses locales — to
+   * a page that exists in one locale only, say — which is not.
+   */
+  remember?: boolean
 }
 
 export interface Navigation<C extends IndicatorsConfig> {
@@ -55,6 +70,12 @@ export interface Navigation<C extends IndicatorsConfig> {
   Link: (props: LinkProps<C>) => React.JSX.Element
   /** The locale the page is in, or the default outside the locale tree. */
   useLocale: () => Locale<C>
+  /**
+   * A function that moves to the current page in another locale, and
+   * remembers the choice in the locale cookie, so the site root sends the
+   * user there next time.
+   */
+  useSetLocale: () => (locale: Locale<C>) => void
   /** The locale, preferences and flags the page was rendered for. */
   useIndicators: () => Resolved<C>
   /**
@@ -121,11 +142,51 @@ export const createNavigation = <C extends IndicatorsConfig>(
     )
   }
 
-  const Link = ({ href, locale, ...props }: LinkProps<C>) => {
+  /** Record a locale the user chose, when the config keeps a cookie for it. */
+  const rememberLocale = (locale: Locale<C>): void => {
+    if (config.localeCookie) writeCookie(config.localeCookie, locale, ONE_YEAR, cookiePath)
+  }
+
+  const Link = ({ href, locale, remember = true, onClick, ...props }: LinkProps<C>) => {
     const toHref = useHref()
-    return <NextLink href={toHref(href, locale)} {...props} />
+    const choose = useCallback(
+      (event: MouseEvent<HTMLAnchorElement>) => {
+        onClick?.(event)
+        if (locale !== undefined && !event.defaultPrevented) rememberLocale(locale)
+      },
+      [locale, onClick]
+    )
+    return (
+      <NextLink
+        href={toHref(href, locale)}
+        onClick={locale === undefined || !remember ? onClick : choose}
+        {...props}
+      />
+    )
   }
   Link.displayName = 'IndicatorsLink'
+
+  const useSetLocale = () => {
+    const router = useRouter()
+    const pathname = usePathname()
+    const toHref = useHref()
+    return useCallback(
+      (locale: Locale<C>) => {
+        rememberLocale(locale)
+        // `usePathname` is the public URL: the mount, the locale prefix if
+        // any, and the page. Keep the page, and let the href carry the rest.
+        const current = pathname ?? '/'
+        const unmounted =
+          mount && (current === mount || current.startsWith(`${mount}/`))
+            ? current.slice(mount.length) || '/'
+            : current
+        const { pathname: page } = splitLocale(config, unmounted)
+        const rest = typeof location === 'undefined' ? '' : `${location.search}${location.hash}`
+        router.push(toHref(`${page}${rest}`, locale))
+      },
+      [pathname, router, toHref]
+    )
+  }
 
   const usePref = <K extends keyof Prefs<C> & string>(
     key: K
@@ -150,7 +211,7 @@ export const createNavigation = <C extends IndicatorsConfig>(
     return [prefs[key], set]
   }
 
-  return { Link, useLocale, useIndicators, useHref, usePref }
+  return { Link, useLocale, useSetLocale, useIndicators, useHref, usePref }
 }
 
 /** Just the `Link`, for an app that wants nothing else from `createNavigation`. */

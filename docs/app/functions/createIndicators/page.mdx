@@ -40,7 +40,7 @@ and not a request. The generic is `const`, so the types of `read`,
 | `locales` | — | every locale served, as it appears in the path |
 | `defaultLocale` | — | the one served when the path names none; must be listed |
 | `localePrefix` | `'as-needed'` | `'always'` prefixes the default locale too. See [Locales](/overview/locales) |
-| `localeCookie` | — | a cookie the proxy reads before `Accept-Language` |
+| `localeCookie` | `'locale'` | the cookie a chosen locale is remembered in, read by the proxy at the root; `false` for none |
 | `prefs` | `{}` | choices the user made, keyed by the name that goes in the path |
 | `flags` | `{}` | facts about the request, likewise |
 | `exclude` | `[]` | top-level paths never localized, besides `_next`, `api` and `.well-known` |

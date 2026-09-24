@@ -21,10 +21,12 @@ export const config = { matcher: ['/'] }
 ```
 
 The matcher is written out because Next reads it from the source. A visitor
-the default locale suits goes on to the rewrites untouched; one another locale suits is redirected to `/fr`, and
-from there every link carries the locale. The redirect is temporary and
-sends `Vary: Accept-Language, Cookie`, so a cache in front does not pin one
-answer for everyone.
+the default locale suits goes on to the rewrites untouched; one another
+locale suits is redirected to `/fr`, and from there every link carries the
+locale. The redirect is temporary and carries `Vary: Accept-Language,
+Cookie`; the page a default-locale visitor gets is Next's own response, and
+a [cache in front](/overview/paths) has to be told about cookies and headers
+itself.
 
 The negotiation is small on purpose: ranges in order of weight, an exact
 match first, then the same language — `en-GB` finds `en-US` when that is all
@@ -33,16 +35,30 @@ there is, and `en` finds it too — and `*` or no match means the default.
 ## A chosen locale
 
 A user who picked a locale should not be re-detected every time they land on
-the root. Name a cookie:
+the root. So a choice is remembered in a cookie — `locale`, unless
+`localeCookie` names another or is `false` — and the proxy reads it before
+the header. Two things write it: a `Link` with a `locale` prop, when it is
+followed, and `useSetLocale`, which also moves to the same page in the new
+locale.
 
-```ts
-createIndicators({ locales: ['en', 'fr'], defaultLocale: 'en', localeCookie: 'locale' })
+```tsx
+<Link href="/" locale="es">Español</Link>
+
+const setLocale = useSetLocale()
+setLocale('es')   // cookie locale=es, then /es/<this page>
 ```
 
-The proxy reads it before the header. It is consulted nowhere else — not by
-the rewrites, not by the links — because `/login` has to stay the default
-locale's page whoever asks for it. The locale a user chose lives in the URLs
-they follow, and that is where a shared link keeps it.
+Detection never writes it. The proxy may well *select* a locale from
+`Accept-Language` — that is what the redirect is — but what the browser asks
+for is an [indicator](/overview/indicators), acted on for one visit; only a
+choice the user makes is a preference, and only that is kept. The same goes
+for a link that crosses locales without being a choice: `remember={false}`
+keeps it from being taken for one.
+
+The cookie is consulted nowhere but the root — not by the rewrites, not by
+the links — because `/login` has to stay the default locale's page whoever
+asks for it. The locale a user chose lives in the URLs they follow, and that
+is where a shared link keeps it.
 
 ## The default locale's prefix
 

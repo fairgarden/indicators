@@ -67,6 +67,16 @@ is. It also puts the whole header value into the key — every distinct
 anything. A rewrite runs before the response, matches with a regular
 expression, and writes only the part that matters.
 
+## A cache in front
+
+Next keys its own cache by the rewritten path, which is the point of all
+this. A cache *in front* of Next keys by the URL the browser sent, and that
+URL no longer says which variant it got. On Vercel the routing — the proxy
+and the rewrites — runs before the cache, so the key is the rewritten path
+there too. A generic CDN in front of a self-hosted app has to be told:
+either `Vary` on `Cookie` and on every header a flag reads, or no caching of
+pages at all, leaving the static assets to it.
+
 ## Daylight saving time
 
 A timezone in the path names the location, not the offset. When the clocks

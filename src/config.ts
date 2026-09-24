@@ -56,11 +56,12 @@ export interface IndicatorsConfig {
    */
   localePrefix?: 'as-needed' | 'always'
   /**
-   * A cookie that overrides language negotiation at the site root, for a user
-   * who has chosen a locale explicitly. Never consulted anywhere else: a
-   * public URL always means one locale.
+   * A cookie remembering a locale the user chose. The proxy reads it at the
+   * site root before `Accept-Language`; a `Link` with a `locale` prop and
+   * `useSetLocale` write it. Never consulted anywhere else: a public URL
+   * always means one locale. Defaults to `locale`; `false` for none.
    */
-  localeCookie?: string
+  localeCookie?: string | false
   /** Choices the user has made, read from cookies unless told otherwise. */
   prefs?: Definitions
   /** Facts about the request, read from headers unless told otherwise. */
@@ -106,7 +107,8 @@ export interface NormalizedConfig {
 /** Paths Next serves itself, or that never belong to a locale. */
 export const ALWAYS_EXCLUDED = ['_next', 'api', '.well-known'] as const
 
-const ONE_YEAR = 60 * 60 * 24 * 365
+/** How long a locale or preference cookie lives, in seconds. */
+export const ONE_YEAR = 60 * 60 * 24 * 365
 
 /**
  * A key or a value has to survive as-is in a path segment and in a
@@ -229,6 +231,12 @@ export const normalizeConfig = (config: IndicatorsConfig): NormalizedConfig => {
     throw new Error(`localePrefix must be "as-needed" or "always".`)
   }
 
+  const localeCookie =
+    config.localeCookie === false ? undefined : (config.localeCookie ?? 'locale')
+  if (localeCookie !== undefined && (typeof localeCookie !== 'string' || localeCookie === '')) {
+    throw new Error('localeCookie must be a cookie name, or false.')
+  }
+
   const exclude = [...ALWAYS_EXCLUDED, ...(config.exclude ?? [])]
   for (const entry of exclude) {
     if (typeof entry !== 'string' || entry === '' || entry.includes('/')) {
@@ -247,7 +255,7 @@ export const normalizeConfig = (config: IndicatorsConfig): NormalizedConfig => {
     locales,
     defaultLocale: config.defaultLocale,
     localePrefix: config.localePrefix ?? 'as-needed',
-    localeCookie: config.localeCookie,
+    localeCookie,
     prefs: normalizeIndicators('prefs', config.prefs),
     flags: normalizeIndicators('flags', config.flags),
     exclude: [...new Set(exclude)],

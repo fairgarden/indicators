@@ -40,6 +40,18 @@ test('lets a locale cookie override the header', () => {
   assert.ok(passes(proxy(request('/', { 'accept-language': 'en', cookie: 'locale=de' }))))
 })
 
+test('reads the locale cookie by default, and not when there is none', () => {
+  const byDefault = createLocaleProxy(createIndicators({ locales: ['en', 'fr'], defaultLocale: 'en' }))
+  assert.equal(
+    byDefault(request('/', { 'accept-language': 'en', cookie: 'locale=fr' })).headers.get('location'),
+    'http://localhost/fr'
+  )
+  const without = createLocaleProxy(
+    createIndicators({ locales: ['en', 'fr'], defaultLocale: 'en', localeCookie: false })
+  )
+  assert.ok(passes(without(request('/', { 'accept-language': 'en', cookie: 'locale=fr' }))))
+})
+
 test('does nothing for any other path', () => {
   const proxy = createLocaleProxy(indicators)
   assert.ok(passes(proxy(request('/login', { 'accept-language': 'fr' }))))

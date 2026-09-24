@@ -2,7 +2,7 @@
 
 <!-- fg:version -->
 
-Version **0.1.0-alpha.0**
+Version **0.1.0-alpha.1**
 
 <!-- /fg:version -->
 
@@ -10,13 +10,13 @@ Version **0.1.0-alpha.0**
 
 ## Releasing
 
-This module releases on its own. `0.1.0-alpha.0` is what main is working towards,
+This module releases on its own. `0.1.0-alpha.1` is what main is working towards,
 not what is published — the version here is always the next one.
 
 1. **Publish it.** Run the *Publish* workflow from the Actions tab, picking the
    dist tag. It refuses if that version is already on npm.
 2. **Move it on.** `pnpm release` — opens a pull request bumping this branch
-   to `0.1.0-alpha.1`, or `pnpm release --id rc` to change
+   to `0.1.0-alpha.2`, or `pnpm release --id rc` to change
    identifier. A prerelease gets no maintenance branch; there is no released
    line behind it yet.
 
@@ -69,7 +69,9 @@ export default indicators.layout(({ children, locale, prefs }) => (
 A chain of `beforeFiles` rewrites turns cookies and headers into sorted path
 segments; `generateStaticParams` lists the same segments, so every variant is
 prerendered and the browser's URL never changes. Language negotiation runs in
-a proxy at the site root and nowhere else.
+a proxy at the site root and nowhere else, where a locale the user chose —
+remembered in a cookie by `Link` and `useSetLocale` — wins over the
+browser's list.
 
 ## Documentation
 

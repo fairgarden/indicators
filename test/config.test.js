@@ -7,7 +7,7 @@ const base = { locales: ['en', 'fr'], defaultLocale: 'en' }
 test('fills in the defaults', () => {
   const config = normalizeConfig(base)
   assert.equal(config.localePrefix, 'as-needed')
-  assert.equal(config.localeCookie, undefined)
+  assert.equal(config.localeCookie, 'locale')
   assert.deepEqual(config.prefs, [])
   assert.deepEqual(config.flags, [])
   assert.deepEqual(config.exclude, ['_next', 'api', '.well-known'])
@@ -75,6 +75,12 @@ const refuses = (name, config, pattern) =>
     assert.throws(() => normalizeConfig(config), pattern)
   })
 
+test('can rename the locale cookie or do without it', () => {
+  assert.equal(normalizeConfig({ ...base, localeCookie: 'lang' }).localeCookie, 'lang')
+  assert.equal(normalizeConfig({ ...base, localeCookie: false }).localeCookie, undefined)
+})
+
+refuses('an empty locale cookie name', { ...base, localeCookie: '' }, /cookie name/)
 refuses('no locales', { locales: [], defaultLocale: 'en' }, /at least one locale/)
 refuses('a default that is not a locale', { locales: ['en'], defaultLocale: 'fr' }, /not one of the locales/)
 refuses('the same locale twice', { locales: ['en', 'EN'], defaultLocale: 'en' }, /twice/)

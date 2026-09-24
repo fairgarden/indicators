@@ -18,8 +18,8 @@ import type { NormalizedConfig } from './config.ts'
  *
  * A visitor the default locale suits goes on to the rewrites untouched; one
  * that another locale suits is redirected to it, from where every link
- * carries the locale. A `localeCookie`, when configured, wins over the
- * header.
+ * carries the locale. The locale cookie — a choice the user made, remembered
+ * by `Link` and `useSetLocale` — wins over the header.
  */
 
 export interface ProxyOptions {
@@ -102,6 +102,8 @@ export const createLocaleProxy = (
       ? chosen
       : app.negotiate(request.headers.get('accept-language'))
 
+    // The page Next renders after this carries Next's own `Vary`, whatever is
+    // set here; only the redirect can say what it depended on.
     if (locale === config.defaultLocale && config.localePrefix === 'as-needed') {
       return NextResponse.next()
     }
@@ -110,7 +112,6 @@ export const createLocaleProxy = (
     url.pathname = `${mount}/${locale}`
     return NextResponse.redirect(url, {
       status: 307,
-      // The answer depends on these, and a cache in front must know it.
       headers: { vary: 'Accept-Language, Cookie' },
     })
   }

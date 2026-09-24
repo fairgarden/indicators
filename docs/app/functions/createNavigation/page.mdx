@@ -16,7 +16,7 @@ import { createNavigation } from '@fairgarden/indicators/link'
 import { mountPrefix } from '@fairgarden/monolith/link'
 import { indicators } from '@fairgarden/id/lib/indicators'
 
-export const { Link, useHref, useIndicators, useLocale, usePref } = createNavigation(
+export const { Link, useHref, useIndicators, useLocale, useSetLocale, usePref } = createNavigation(
   indicators,
   { mount: mountPrefix('@fairgarden/id') }
 )
@@ -52,6 +52,13 @@ Props are `next/link`'s, plus `locale` to link into another locale.
 <Link href="/" locale="fr">Français</Link>
 ```
 
+A `locale` given explicitly is a choice, so following that link also writes
+the [locale cookie](/overview/locales), which the site root reads next time.
+A link that merely crosses locales — to a page that exists in one locale
+only — is not a choice; give it `remember={false}`. Your own `onClick` runs
+first, and calling `preventDefault` there skips the cookie along with the
+navigation.
+
 Absolute URLs, fragments, relative paths, a path that already starts with a
 locale, and a path starting with an excluded segment such as `/api` are left
 alone. A file in `public/` is not known to the client, so link to it with
@@ -67,6 +74,20 @@ const toHref = useHref()
 router.push(toHref('/settings'))
 toHref('/settings', 'fr')
 ```
+
+## `useSetLocale`
+
+```tsx
+const setLocale = useSetLocale()
+setLocale('fr')   // cookie locale=fr, then router.push('/fr/<this page>')
+```
+
+Moves to the page the user is on, in another locale, and remembers the
+choice. The page comes from `usePathname`, which is the public URL; the
+mount and the old locale prefix are stripped and the query and fragment are
+kept, so `/id/settings?tab=2` becomes `/id/fr/settings?tab=2`. To move a
+user into a locale without recording a choice, build the href with
+`useHref` and push it yourself.
 
 ## `useIndicators` and `useLocale`
 

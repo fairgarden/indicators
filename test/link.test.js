@@ -38,6 +38,12 @@ test('leaves the href alone when there is nothing to add', () => {
   )
 })
 
+test('offers a locale setter alongside the reader', () => {
+  const navigation = createNavigation(indicators)
+  assert.equal(typeof navigation.useSetLocale, 'function')
+  assert.equal(typeof navigation.useLocale, 'function')
+})
+
 test('reports the default locale and no values outside the locale tree', () => {
   const { useIndicators, useLocale } = createNavigation(indicators)
   let seen
@@ -47,4 +53,65 @@ test('reports the default locale and no values outside the locale tree', () => {
   }
   renderToStaticMarkup(createElement(Probe))
   assert.deepEqual(seen, { locale: 'en', prefs: {}, flags: {}, current: 'en' })
+})
+
+// `useParams` reads this context; on a page it holds the internal route's
+// params, so a Link on /cn/login sees locale "cn".
+const { PathParamsContext } = await import(
+  'next/dist/shared/lib/hooks-client-context.shared-runtime.js'
+)
+
+const onPage = (params, element) =>
+  renderToStaticMarkup(createElement(PathParamsContext.Provider, { value: params }, element))
+
+const multi = createIndicators({
+  locales: ['en', 'cn', 'es'],
+  defaultLocale: 'en',
+  exclude: ['oidc'],
+})
+
+test('prefixes hrefs with the locale of the page the link is on', () => {
+  const { Link } = createNavigation(multi)
+  const page = { locale: 'cn', prefs: '-', flags: '-' }
+  assert.equal(
+    onPage(page, createElement(Link, { href: '/about' }, 'About')),
+    '<a href="/cn/about">About</a>'
+  )
+  assert.equal(onPage(page, createElement(Link, { href: '/' }, 'Home')), '<a href="/cn">Home</a>')
+  assert.equal(
+    onPage(page, createElement(Link, { href: '/about?x=1#team' }, 'x')),
+    '<a href="/cn/about?x=1#team">x</a>'
+  )
+})
+
+test('adds nothing on a default-locale page', () => {
+  const { Link } = createNavigation(multi)
+  const page = { locale: 'en', prefs: 'theme~dark', flags: '-' }
+  assert.equal(onPage(page, createElement(Link, { href: '/about' }, 'x')), '<a href="/about">x</a>')
+})
+
+test('leaves hrefs that already say where they go, and excluded ones, alone', () => {
+  const { Link } = createNavigation(multi)
+  const page = { locale: 'cn', prefs: '-', flags: '-' }
+  for (const [href, expected] of [
+    ['/es/about', '/es/about'],
+    ['/en/about', '/en/about'],
+    ['/oidc/auth', '/oidc/auth'],
+    ['/api/health', '/api/health'],
+    ['https://example.com/about', 'https://example.com/about'],
+    ['#team', '#team'],
+    ['about', 'about'],
+  ]) {
+    assert.equal(onPage(page, createElement(Link, { href }, 'x')), `<a href="${expected}">x</a>`)
+  }
+})
+
+test('puts the mount after the locale', () => {
+  const { Link } = createNavigation(multi, { mount: '/id' })
+  const page = { locale: 'cn', prefs: '-', flags: '-' }
+  assert.equal(onPage(page, createElement(Link, { href: '/about' }, 'x')), '<a href="/id/cn/about">x</a>')
+  assert.equal(
+    onPage(page, createElement(Link, { href: '/about', locale: 'en' }, 'x')),
+    '<a href="/id/about">x</a>'
+  )
 })
