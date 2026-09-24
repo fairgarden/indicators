@@ -1,8 +1,12 @@
 import {
+  DEFAULT_STYLESHEET,
   escapeRegExp,
+  stylesheetFile,
   type NormalizedConfig,
   type NormalizedHardFlag,
   type NormalizedIndicator,
+  type NormalizedStylesheet,
+  type Segment,
 } from './config.ts'
 import { EMPTY_SEGMENT, PAIR_SEPARATOR, VALUE_SEPARATOR } from './segments.ts'
 
@@ -19,7 +23,8 @@ import { EMPTY_SEGMENT, PAIR_SEPARATOR, VALUE_SEPARATOR } from './segments.ts'
  * rewrite per combination:
  *
  *  1. a path without a locale gets the default one
- *  2. empty preference and flag segments are inserted after the locale
+ *  2. an empty segment is inserted after the locale for each of the
+ *     preferences and flags segments the tree has
  *  3. each value of each preference, when its cookie or header matches,
  *     appends `.key~value` to the preferences segment; then flags likewise
  *  4. a segment still starting with the empty marker has it stripped
@@ -28,6 +33,9 @@ import { EMPTY_SEGMENT, PAIR_SEPARATOR, VALUE_SEPARATOR } from './segments.ts'
  * when its key is already in the segment, so the result is always the
  * canonical form `segments.ts` describes. The number of rewrites grows with
  * the number of values, not with the number of combinations.
+ *
+ * An indicator expressed through a stylesheet takes no part in this: its
+ * rewrites map the stylesheet's URL to a file, and come first.
  */
 
 /** The shape Next accepts for `has` and `missing`. */
@@ -46,6 +54,11 @@ export interface Redirect {
   source: string
   destination: string
   permanent: boolean
+}
+
+export interface Header {
+  source: string
+  headers: Array<{ key: string; value: string }>
 }
 
 export interface RewriteOptions {
@@ -68,32 +81,116 @@ const alternation = (values: readonly string[]): string => values.map(escapeRegE
 const localeParam = (config: NormalizedConfig): string =>
   `:locale(${alternation(config.locales)})`
 
+const hasSegment = (config: NormalizedConfig, segment: Segment): boolean =>
+  config.segments.includes(segment)
+
+/** The first segment of a public path: what the locale rewrite keys on. */
+const firstSegment = (pathname: string): string => pathname.split('/')[1] ?? ''
+
+/**
+ * The path up to and including the last indicator segment, as a source and
+ * as a destination, with a segment's param given a custom pattern:
+ * `/:locale(en|fr)/:prefs(...)/:flags`. The base every later step hangs
+ * its `/:path*` off.
+ *
+ * With locales, `:locale(en|fr)` anchors every source: a path Next serves
+ * itself, or a file in `public/`, does not start with one. Without, the
+ * first segment's param carries the same lookahead the locale step uses,
+ * so `/_next/static/x.js` is never mistaken for two indicator segments.
+ */
+const segmentPath = (
+  config: NormalizedConfig,
+  options: RewriteOptions,
+  patterns: Partial<Record<'prefs' | 'flags', string>> = {},
+  /** Off for a source that something else anchors, such as the marker a cleanup looks for. */
+  anchored = true
+): { source: string; destination: string } => {
+  let source = ''
+  let destination = ''
+  let first = true
+  for (const segment of config.segments) {
+    if (segment === 'locale') {
+      source += `/${localeParam(config)}`
+      destination += '/:locale'
+    } else {
+      const anchor = first && anchored ? `(?!${excluded(config, options)})` : ''
+      const pattern = patterns[segment]
+      const custom = pattern ? pattern.slice(1, -1) : ''
+      source += anchor || custom ? `/:${segment}(${anchor}${custom || '[^/]+'})` : `/:${segment}`
+      destination += `/:${segment}`
+    }
+    first = false
+  }
+  return { source, destination }
+}
+
 /**
  * A negative lookahead for everything a path may start with and still not be
  * localized. Each entry has to be a whole segment: `en` must not exclude
  * `/entries`.
  */
 const excluded = (config: NormalizedConfig, options: RewriteOptions): string => {
-  const names = [...new Set([...config.locales, ...config.exclude, ...(options.exclude ?? [])])]
-  const stems = [...new Set(options.excludeStems ?? [])]
+  // A stylesheet and the files it is rewritten to: the directory when it is
+  // in one, otherwise its name whatever the extension, since `/theme.css`
+  // is served beside `/theme.dark.css`.
+  const inDirectory = config.stylesheets.filter((sheet) => sheet.href.indexOf('/', 1) !== -1)
+  const atRoot = config.stylesheets.filter((sheet) => sheet.href.indexOf('/', 1) === -1)
+
+  const names = [
+    ...new Set([
+      ...config.locales,
+      ...config.exclude,
+      ...(options.exclude ?? []),
+      ...inDirectory.map((sheet) => firstSegment(sheet.href)),
+    ]),
+  ].filter((name) => name !== '')
+  const stems = [
+    ...new Set([...(options.excludeStems ?? []), ...atRoot.map((sheet) => sheet.base.slice(1))]),
+  ]
   return [
     ...names.map((name) => `${escapeRegExp(name)}(?:/|$)`),
     ...stems.map((stem) => `${escapeRegExp(stem)}(?:\\.[^/]*)?(?:/|$)`),
   ].join('|')
 }
 
-/** Steps 1 and 2: a locale for every path, then the two empty segments. */
-export const localeRewrites = (config: NormalizedConfig, options: RewriteOptions = {}): Rewrite[] => [
-  { source: '/', destination: `/${config.defaultLocale}` },
-  {
-    source: `/:path((?!${excluded(config, options)}).+)`,
-    destination: `/${config.defaultLocale}/:path`,
-  },
-  {
-    source: `/${localeParam(config)}/:path*`,
-    destination: `/:locale/${EMPTY_SEGMENT}/${EMPTY_SEGMENT}/:path*`,
-  },
-]
+/**
+ * Steps 1 and 2: a locale for every path, then the empty segments. Without
+ * locales, the empty segments go in front of every path the locale step
+ * would have localized, and the root gets them alone.
+ */
+export const localeRewrites = (config: NormalizedConfig, options: RewriteOptions = {}): Rewrite[] => {
+  const empty = `/${EMPTY_SEGMENT}`.repeat(
+    config.segments.filter((segment) => segment !== 'locale').length
+  )
+
+  // The path step first: the root's result would match it otherwise, and
+  // the empty segments would be inserted twice. (With a locale, a localized
+  // root cannot match the path step, so the order there is free.)
+  if (!hasSegment(config, 'locale')) {
+    if (empty === '') return []
+    return [
+      { source: `/:path((?!${excluded(config, options)}).+)`, destination: `${empty}/:path` },
+      { source: '/', destination: empty },
+    ]
+  }
+
+  const rewrites: Rewrite[] = [
+    { source: '/', destination: `/${config.defaultLocale}` },
+    {
+      source: `/:path((?!${excluded(config, options)}).+)`,
+      destination: `/${config.defaultLocale}/:path`,
+    },
+  ]
+
+  if (empty !== '') {
+    rewrites.push({
+      source: `/${localeParam(config)}/:path*`,
+      destination: `/:locale${empty}/:path*`,
+    })
+  }
+
+  return rewrites
+}
 
 /**
  * Step 3 for one kind of indicator, then step 4.
@@ -105,64 +202,87 @@ export const localeRewrites = (config: NormalizedConfig, options: RewriteOptions
  */
 export const indicatorRewrites = (
   config: NormalizedConfig,
-  kind: 'prefs' | 'flags'
+  kind: 'prefs' | 'flags',
+  options: RewriteOptions = {}
 ): Rewrite[] => {
   const indicators: NormalizedIndicator[] = config[kind]
-  const locale = localeParam(config)
+  if (indicators.length === 0 || !hasSegment(config, kind)) return []
+
   const rewrites: Rewrite[] = []
 
   for (const indicator of indicators) {
     const guard = `(?!(?:[^/]*${escapeRegExp(PAIR_SEPARATOR)})?${escapeRegExp(indicator.key)}${escapeRegExp(VALUE_SEPARATOR)})`
-    const segment = `:${kind}(${guard}[^/]+)`
-    const source =
-      kind === 'prefs'
-        ? `/${locale}/${segment}/:flags/:path*`
-        : `/${locale}/:prefs/${segment}/:path*`
+    const base = segmentPath(config, options, { [kind]: `(${guard}[^/]+)` })
 
     for (const value of indicator.values) {
       const pair = `${indicator.key}${VALUE_SEPARATOR}${value.name}`
-      const destination =
-        kind === 'prefs'
-          ? `/:locale/:prefs${PAIR_SEPARATOR}${pair}/:flags/:path*`
-          : `/:locale/:prefs/:flags${PAIR_SEPARATOR}${pair}/:path*`
-
       rewrites.push({
-        source,
+        source: `${base.source}/:path*`,
         has: [{ type: indicator.source.type, key: indicator.source.key, value: value.pattern }],
-        destination,
+        destination: `${base.destination.replace(
+          `:${kind}`,
+          `:${kind}${PAIR_SEPARATOR}${pair}`
+        )}/:path*`,
       })
     }
   }
 
-  // Nothing to strip when nothing could have been appended. The separator is
-  // escaped: a bare `.` before a param is a prefix to path-to-regexp, which
-  // then keeps dots out of the param, and a segment with two pairs has one.
-  if (indicators.length > 0) {
-    const marker = `${EMPTY_SEGMENT}${escapeRegExp(PAIR_SEPARATOR)}`
-    rewrites.push(
-      kind === 'prefs'
-        ? {
-            source: `/${locale}/${marker}:prefs/:flags/:path*`,
-            destination: '/:locale/:prefs/:flags/:path*',
-          }
-        : {
-            source: `/${locale}/:prefs/${marker}:flags/:path*`,
-            destination: '/:locale/:prefs/:flags/:path*',
-          }
-    )
-  }
+  // Strip the marker the values were appended to. The separator is escaped:
+  // a bare `.` before a param is a prefix to path-to-regexp, which then
+  // keeps dots out of the param, and a segment with two pairs has one.
+  // The marker anchors this one on its own, so the segments go unpatterned.
+  const marker = `${EMPTY_SEGMENT}${escapeRegExp(PAIR_SEPARATOR)}`
+  const cleanup = segmentPath(config, options, {}, false)
+  rewrites.push({
+    source: `${cleanup.source.replace(`:${kind}`, `${marker}:${kind}`)}/:path*`,
+    destination: `${cleanup.destination}/:path*`,
+  })
 
   return rewrites
 }
+
+/**
+ * An indicator expressed through a stylesheet: its URL is rewritten to the
+ * file for the first value whose cookie or header matches, or to the
+ * default. Nothing runs for it — the files are static, and the `headers`
+ * entry below is what keeps the browser asking.
+ */
+export const stylesheetRewrites = (config: NormalizedConfig): Rewrite[] =>
+  config.stylesheets.flatMap((sheet: NormalizedStylesheet): Rewrite[] => [
+    ...sheet.values.map(
+      (value): Rewrite => ({
+        source: sheet.href,
+        has: [{ type: sheet.source.type, key: sheet.source.key, value: value.pattern }],
+        destination: stylesheetFile(sheet, value.name),
+      })
+    ),
+    // Reached only when no value matched: a match rewrote the path away.
+    { source: sheet.href, destination: stylesheetFile(sheet, DEFAULT_STYLESHEET) },
+  ])
+
+/**
+ * The response depends on a cookie or header, so no cache in front may keep
+ * it, and the browser has to ask again on every page — which is a 304 while
+ * nothing changed, and a new file when the value did. A stale copy is only
+ * the wrong theme, so it may stand in when the server cannot answer.
+ */
+export const stylesheetHeaders = (config: NormalizedConfig): Header[] =>
+  config.stylesheets.map((sheet) => ({
+    source: sheet.href,
+    headers: [
+      { key: 'Cache-Control', value: 'private, no-cache, stale-if-error=86400' },
+    ],
+  }))
 
 /** The whole chain, in the order it has to run. */
 export const indicatorsRewrites = (
   config: NormalizedConfig,
   options: RewriteOptions = {}
 ): Rewrite[] => [
+  ...stylesheetRewrites(config),
   ...localeRewrites(config, options),
-  ...indicatorRewrites(config, 'prefs'),
-  ...indicatorRewrites(config, 'flags'),
+  ...indicatorRewrites(config, 'prefs', options),
+  ...indicatorRewrites(config, 'flags', options),
 ]
 
 export interface HardFlagRewrites {
@@ -176,14 +296,14 @@ export interface HardFlagRewrites {
  * The rewrites for hard flags — see `HardFlagDefinition`.
  *
  * Three parts, and the first is the one that matters for safety. The chain
- * puts the two empty segments straight after the locale, so whatever a
- * public path starts with lands exactly where a hard segment goes: a
- * request for `/beta/login` would otherwise become `/en/-/-/beta/login` and
- * be served the beta page with no cookie at all. So a path whose first
- * segment names a hard flag is quarantined first, by pushing an empty
- * segment in front of it, where it matches nothing. Only then does each
- * flag whose cookie or header matches inject its segment, straight after
- * the flags; visiting the flags in reverse order leaves the segments sorted.
+ * puts the empty segments straight after the locale, so whatever a public
+ * path starts with lands exactly where a hard segment goes: a request for
+ * `/beta/login` would otherwise become `/en/-/-/beta/login` and be served
+ * the beta page with no cookie at all. So a path whose first segment names
+ * a hard flag is quarantined first, by pushing an empty segment in front of
+ * it, where it matches nothing. Only then does each flag whose cookie or
+ * header matches inject its segment, straight after the last indicator
+ * segment; visiting the flags in reverse order leaves the segments sorted.
  *
  * The strips go in `fallback`, which Next applies only once no route
  * matched, checking again after each: a beta user asking for a page with no
@@ -200,41 +320,63 @@ export interface HardFlagRewrites {
  */
 export const hardFlagRewrites = (
   config: NormalizedConfig,
-  hardFlags: NormalizedHardFlag[]
+  hardFlags: NormalizedHardFlag[],
+  options: RewriteOptions = {}
 ): HardFlagRewrites => {
   if (hardFlags.length === 0) return { beforeFiles: [], fallback: [] }
 
-  const base = `/${localeParam(config)}/:prefs/:flags`
+  const base = segmentPath(config, options)
+  const has = (flag: NormalizedHardFlag): Has[] => [
+    { type: flag.source.type, key: flag.source.key, value: `(?:${flag.patterns.join('|')})` },
+  ]
+  const optional = (before: NormalizedHardFlag[]) => ({
+    source: before.map((earlier, at) => `/:h${at}(${escapeRegExp(earlier.key)})?`).join(''),
+    destination: before.map((_, at) => `/:h${at}*`).join(''),
+  })
 
   const quarantine: Rewrite = {
-    source: `${base}/:hard(${alternation(hardFlags.map((flag) => flag.key))})/:path*`,
-    destination: `/:locale/:prefs/:flags/${EMPTY_SEGMENT}/:hard/:path*`,
+    source: `${base.source}/:hard(${alternation(hardFlags.map((flag) => flag.key))})/:path*`,
+    destination: `${base.destination}/${EMPTY_SEGMENT}/:hard/:path*`,
+  }
+
+  // With no segment at all, a hard segment goes at the front of every path
+  // the locale step would have localized, and of the root, and comes off
+  // the same way. `/:path*` alone would take `/_next` too, and `/:path*` as
+  // a whole destination compiles to nothing for the root. The root comes
+  // second, since its result would match the path step.
+  if (base.source === '') {
+    const guarded = `/:path((?!${excluded(config, options)}).+)`
+    const inject = [...hardFlags].reverse().flatMap((flag): Rewrite[] => [
+      { source: guarded, has: has(flag), destination: `/${flag.key}/:path` },
+      { source: '/', has: has(flag), destination: `/${flag.key}` },
+    ])
+    const fallback = hardFlags
+      .flatMap((flag, index): Rewrite[] => {
+        const before = optional(hardFlags.slice(0, index))
+        const kept = before.destination === '' ? '/' : before.destination
+        return [
+          { source: `${before.source}/${flag.key}`, destination: kept },
+          { source: `${before.source}/${flag.key}/:path+`, destination: `${before.destination}/:path+` },
+        ]
+      })
+      .reverse()
+    return { beforeFiles: [quarantine, ...inject], fallback }
   }
 
   const inject = [...hardFlags].reverse().map(
     (flag): Rewrite => ({
-      source: `${base}/:path*`,
-      has: [
-        {
-          type: flag.source.type,
-          key: flag.source.key,
-          value: `(?:${flag.patterns.join('|')})`,
-        },
-      ],
-      destination: `/:locale/:prefs/:flags/${flag.key}/:path*`,
+      source: `${base.source}/:path*`,
+      has: has(flag),
+      destination: `${base.destination}/${flag.key}/:path*`,
     })
   )
 
   const fallback = hardFlags
     .map((flag, index): Rewrite => {
-      const before = hardFlags.slice(0, index)
+      const before = optional(hardFlags.slice(0, index))
       return {
-        source: `${base}${before
-          .map((earlier, at) => `/:h${at}(${escapeRegExp(earlier.key)})?`)
-          .join('')}/${flag.key}/:path*`,
-        destination: `/:locale/:prefs/:flags${before
-          .map((_, at) => `/:h${at}*`)
-          .join('')}/:path*`,
+        source: `${base.source}${before.source}/${flag.key}/:path*`,
+        destination: `${base.destination}${before.destination}/:path*`,
       }
     })
     .reverse()
@@ -257,6 +399,7 @@ export const indicatorsRedirects = (
   options: RewriteOptions = {}
 ): Redirect[] => {
   const { defaultLocale } = config
+  if (defaultLocale === undefined) return []
 
   if (config.localePrefix === 'always') {
     return [

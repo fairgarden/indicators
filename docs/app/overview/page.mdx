@@ -41,6 +41,12 @@ A segment with nothing in it is `-`. The pairs in a segment are sorted by
 key, which is what makes the path a stable cache key — see
 [Paths](/overview/paths).
 
+A tree need not have all three. `segments: ['locale']` gives
+`app/[locale]/…`, for a site whose pages are too heavy to copy per
+preference; its preferences are then expressed through
+[stylesheets](/overview/stylesheets) instead. A site in one language leaves
+`locales` out too, and `segments: []` is a plain `app/…`.
+
 ## What the app has to do
 
 - Declare the indicators with [`createIndicators`](/functions/createIndicators).

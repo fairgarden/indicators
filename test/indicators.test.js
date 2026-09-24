@@ -130,3 +130,76 @@ test('builds hrefs, splits locales and negotiates', () => {
 test('checks the config when created', () => {
   assert.throws(() => createIndicators({ locales: ['en'], defaultLocale: 'fr' }), /not one of the locales/)
 })
+
+// ---- segments and stylesheets ---------------------------------------------
+
+test('generates params only for the segments the tree has', () => {
+  const only = createIndicators({ locales: ['en', 'fr'], defaultLocale: 'en', segments: ['locale'] })
+  assert.deepEqual(only.segments, ['locale'])
+  assert.deepEqual(only.generateStaticParams(), [{ locale: 'en' }, { locale: 'fr' }])
+  assert.deepEqual(only.prefs.generateStaticParams(), [])
+  assert.deepEqual(only.flags.generateStaticParams(), [])
+
+  const flagsOnly = createIndicators({
+    locales: ['en'],
+    defaultLocale: 'en',
+    segments: ['locale', 'flags'],
+    flags: { tz: { header: 'x-vercel-ip-timezone', values: ['EST'] } },
+  })
+  assert.deepEqual(flagsOnly.generateStaticParams(), [
+    { locale: 'en', flags: '-' },
+    { locale: 'en', flags: 'tz~EST' },
+  ])
+})
+
+test('reads nothing for a segment the tree does not have', async () => {
+  const only = createIndicators({ locales: ['en'], defaultLocale: 'en', segments: ['locale'] })
+  assert.deepEqual(await only.read({ locale: 'en' }), { locale: 'en', prefs: {}, flags: {} })
+  assert.deepEqual(await only.prefs.read({}), {})
+  const seen = []
+  await only.layout((props) => seen.push(props))({ children: null, params: { locale: 'en' } })
+  assert.deepEqual(seen[0], { children: null, params: { locale: 'en' }, locale: 'en', prefs: {}, flags: {} })
+})
+
+test('keeps a stylesheet indicator out of the segment and lists its link', () => {
+  const styled = createIndicators({
+    locales: ['en'],
+    defaultLocale: 'en',
+    prefs: {
+      theme: { values: ['light', 'dark'] },
+      contrast: { values: ['more'], stylesheet: '/theme/contrast.css' },
+    },
+  })
+  assert.deepEqual(styled.prefs.generateStaticParams(), [
+    { prefs: '-' },
+    { prefs: 'theme~light' },
+    { prefs: 'theme~dark' },
+  ])
+  assert.equal(styled.prefs.decode('contrast~more'), undefined)
+  assert.deepEqual(styled.stylesheets(), [{ key: 'contrast', kind: 'prefs', href: '/theme/contrast.css' }])
+  assert.deepEqual(indicators.stylesheets(), [])
+})
+
+test('serves a site in one language with no locale at all', async () => {
+  const single = createIndicators({
+    segments: [],
+    prefs: { theme: { values: ['light', 'dark'], stylesheet: '/theme.css' } },
+  })
+  assert.deepEqual(single.segments, [])
+  assert.deepEqual(single.locales, [])
+  assert.equal(single.defaultLocale, undefined)
+  assert.deepEqual(single.generateStaticParams(), [])
+  assert.deepEqual(single.locale.generateStaticParams(), [])
+  assert.deepEqual(await single.read({}), { locale: undefined, prefs: {}, flags: {} })
+  assert.equal(await single.locale.read({}), undefined)
+  assert.equal(single.href('/about', undefined), '/about')
+  assert.equal(single.negotiate('fr'), undefined)
+  assert.deepEqual(single.splitLocale('/fr/x'), { locale: undefined, pathname: '/fr/x' })
+  assert.deepEqual(single.stylesheets(), [{ key: 'theme', kind: 'prefs', href: '/theme.css' }])
+
+  const withSegments = createIndicators({ flags: { tz: { header: 'x', values: ['EST'] } } })
+  assert.deepEqual(withSegments.generateStaticParams(), [
+    { prefs: '-', flags: '-' },
+    { prefs: '-', flags: 'tz~EST' },
+  ])
+})

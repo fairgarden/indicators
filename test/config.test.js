@@ -126,3 +126,65 @@ refusesHard('a locale for a name', { fr: { values: ['x'] } }, /also a locale/)
 refusesHard('two sources', { beta: { cookie: 'a', query: 'b', values: ['x'] } }, /more than one source/)
 refusesHard('no values', { beta: { values: [] } }, /at least one/)
 refusesHard('a bad pattern', { beta: { values: { x: '(' } } }, /not a valid regular expression/)
+
+// ---- segments and stylesheets ---------------------------------------------
+
+import { DEFAULT_STYLESHEET, stylesheetFile } from '../dist/config.js'
+
+test('has the three segments by default, and only the ones asked for otherwise', () => {
+  assert.deepEqual(normalizeConfig(base).segments, ['locale', 'prefs', 'flags'])
+  assert.deepEqual(normalizeConfig({ ...base, segments: ['locale'] }).segments, ['locale'])
+  // In path order whatever the order given.
+  assert.deepEqual(normalizeConfig({ ...base, segments: ['flags', 'locale'] }).segments, ['locale', 'flags'])
+  assert.deepEqual(
+    normalizeConfig({ ...base, segments: ['flags', 'prefs', 'locale'] }).segments,
+    ['locale', 'prefs', 'flags']
+  )
+})
+
+test('expresses an indicator through a stylesheet instead of the path', () => {
+  const config = normalizeConfig({
+    ...base,
+    segments: ['locale'],
+    prefs: { theme: { values: ['light', 'dark'], stylesheet: '/theme.css' } },
+    flags: {
+      motion: { header: 'Sec-CH-Prefers-Reduced-Motion', values: ['reduce'], stylesheet: '/css/motion.css' },
+    },
+  })
+  assert.deepEqual(config.prefs, [])
+  assert.deepEqual(config.flags, [])
+  assert.deepEqual(
+    config.stylesheets.map((sheet) => [sheet.key, sheet.kind, sheet.source.key, sheet.href, sheet.base]),
+    [
+      ['motion', 'flags', 'sec-ch-prefers-reduced-motion', '/css/motion.css', '/css/motion'],
+      ['theme', 'prefs', 'theme', '/theme.css', '/theme'],
+    ]
+  )
+  assert.equal(stylesheetFile(config.stylesheets[1], 'dark'), '/theme.dark.css')
+  assert.equal(stylesheetFile(config.stylesheets[1], DEFAULT_STYLESHEET), '/theme.default.css')
+  assert.equal(stylesheetFile(config.stylesheets[0], 'reduce'), '/css/motion.reduce.css')
+})
+
+refuses('a segment it does not know', { ...base, segments: ['locale', 'theme'] }, /segments may hold/)
+refuses('a preference in the path without its segment', { ...base, segments: ['locale'], prefs: { theme: { values: ['dark'] } } }, /leaves out/)
+refuses('a flag in the path without its segment', { ...base, segments: ['locale', 'prefs'], flags: { tz: { values: ['a'] } } }, /leaves out/)
+refuses('a stylesheet that is not a path', { ...base, prefs: { theme: { values: ['dark'], stylesheet: 'theme.css' } } }, /ending in \.css/)
+refuses('a stylesheet that is not a css file', { ...base, prefs: { theme: { values: ['dark'], stylesheet: '/theme' } } }, /ending in \.css/)
+refuses('a stylesheet with a query', { ...base, prefs: { theme: { values: ['dark'], stylesheet: '/theme.css?x' } } }, /ending in \.css/)
+refuses('two indicators on one stylesheet', { ...base, prefs: { a: { values: ['x'], stylesheet: '/t.css' }, b: { values: ['y'], stylesheet: '/t.css' } } }, /share the stylesheet/)
+
+// ---- a site in one language --------------------------------------------------
+
+test('has no locale segment when there are no locales', () => {
+  const config = normalizeConfig({ prefs: { theme: { values: ['dark'], stylesheet: '/theme.css' } } })
+  assert.deepEqual(config.locales, [])
+  assert.equal(config.defaultLocale, undefined)
+  assert.equal(config.localeCookie, undefined)
+  assert.deepEqual(config.segments, ['prefs', 'flags'])
+  assert.deepEqual(normalizeConfig({ segments: [] }).segments, [])
+  assert.deepEqual(normalizeConfig({ segments: ['flags'] }).segments, ['flags'])
+})
+
+refuses('a default locale without locales', { defaultLocale: 'en' }, /no locales/)
+refuses('locales without their segment', { ...base, segments: ['prefs'] }, /leaves the locale segment out/)
+refuses('a locale segment without locales', { segments: ['locale'] }, /no locales are given/)

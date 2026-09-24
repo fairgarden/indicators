@@ -2,10 +2,26 @@
 
 import NextLink from 'next/link'
 import { useParams, usePathname, useRouter } from 'next/navigation'
-import { useCallback, useMemo, type ComponentProps, type MouseEvent } from 'react'
-import { ONE_YEAR, type IndicatorsConfig } from './config.ts'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ComponentProps,
+  type MouseEvent,
+} from 'react'
+import { ONE_YEAR, type IndicatorsConfig, type NormalizedValue } from './config.ts'
 import { localizeHref, mountHref, splitLocale, type Href } from './hrefs.ts'
-import type { Flags, Indicators, Locale, Prefs, Resolved } from './indicators.ts'
+import type {
+  CurrentLocale,
+  Flags,
+  Indicators,
+  Locale,
+  PrefKey,
+  Prefs,
+  PrefValue,
+  Resolved,
+} from './indicators.ts'
 
 /**
  * Links and hooks that know which locale the page is in.
@@ -68,8 +84,11 @@ export type LinkProps<C extends IndicatorsConfig> = Omit<NextLinkProps, 'locale'
 export interface Navigation<C extends IndicatorsConfig> {
   /** A `next/link` whose hrefs carry the locale, and the mount when there is one. */
   Link: (props: LinkProps<C>) => React.JSX.Element
-  /** The locale the page is in, or the default outside the locale tree. */
-  useLocale: () => Locale<C>
+  /**
+   * The locale the page is in, or the default outside the locale tree;
+   * undefined for a site in one language.
+   */
+  useLocale: () => CurrentLocale<C>
   /**
    * A function that moves to the current page in another locale, and
    * remembers the choice in the locale cookie, so the site root sends the
@@ -84,13 +103,62 @@ export interface Navigation<C extends IndicatorsConfig> {
    */
   useHref: () => <T extends Href>(href: T, locale?: Locale<C>) => T
   /**
-   * A preference and a setter for it. Setting writes the cookie and
-   * refreshes the route, so the next render is the matching variant;
+   * A preference and a setter for it. Setting writes the cookie; for a
+   * preference in the path it then refreshes the route, so the next render
+   * is the matching variant, and for one expressed through a stylesheet it
+   * fetches that stylesheet again, so the change shows without a reload.
    * `undefined` clears it. Only for a cookie-backed preference.
+   *
+   * A preference in the path is known on the server and on the first
+   * render. One expressed through a stylesheet is read from the cookie
+   * after mounting, so it is `undefined` on the server and until then.
    */
-  usePref: <K extends keyof Prefs<C> & string>(
+  usePref: <K extends PrefKey<C>>(
     key: K
-  ) => [Prefs<C>[K], (value: Prefs<C>[K] | undefined) => void]
+  ) => [PrefValue<C, K> | undefined, (value: PrefValue<C, K> | undefined) => void]
+}
+
+const readCookie = (name: string): string | undefined => {
+  if (typeof document === 'undefined') return undefined
+  for (const part of document.cookie.split(';')) {
+    const [key, ...rest] = part.trim().split('=')
+    if (key === name) return decodeURIComponent(rest.join('='))
+  }
+  return undefined
+}
+
+/** The value name a raw cookie stands for, by the indicator's patterns. */
+const nameOf = (values: NormalizedValue[], raw: string | undefined): string | undefined =>
+  raw === undefined
+    ? undefined
+    : values.find((value) => new RegExp(`^(?:${value.pattern})$`).test(raw))?.name
+
+/**
+ * Fetch a stylesheet again, so a changed cookie shows without a reload: a
+ * fresh link after the current ones, and the earlier fresh ones removed once
+ * it has loaded. The first link is the layout's and stays; the fresh one
+ * comes later in the document, so what it sets wins.
+ */
+const reloadStylesheet = (key: string): void => {
+  if (typeof document === 'undefined') return
+  const links = [
+    ...document.querySelectorAll<HTMLLinkElement>(
+      `link[rel="stylesheet"][data-indicators-stylesheet="${key}"]`
+    ),
+  ]
+  const last = links[links.length - 1]
+  if (!last) return
+
+  const fresh = document.createElement('link')
+  fresh.rel = 'stylesheet'
+  fresh.dataset.indicatorsStylesheet = key
+  const url = new URL(last.href)
+  url.searchParams.set('v', String(Date.now()))
+  fresh.href = url.toString()
+  fresh.addEventListener('load', () => {
+    for (const old of links.slice(1)) old.remove()
+  })
+  last.after(fresh)
 }
 
 const writeCookie = (
@@ -115,10 +183,10 @@ export const createNavigation = <C extends IndicatorsConfig>(
   const asString = (value: string | string[] | undefined): string | undefined =>
     typeof value === 'string' ? value : undefined
 
-  const useLocale = (): Locale<C> => {
+  const useLocale = (): CurrentLocale<C> => {
     const params = useParams<Record<string, string | string[]>>()
     const locale = params?.locale
-    return indicators.isLocale(locale) ? locale : indicators.defaultLocale
+    return (indicators.isLocale(locale) ? locale : indicators.defaultLocale) as CurrentLocale<C>
   }
 
   const useIndicators = (): Resolved<C> => {
@@ -126,7 +194,9 @@ export const createNavigation = <C extends IndicatorsConfig>(
     return useMemo(() => {
       const locale = params?.locale
       return {
-        locale: indicators.isLocale(locale) ? locale : indicators.defaultLocale,
+        locale: (indicators.isLocale(locale)
+          ? locale
+          : indicators.defaultLocale) as CurrentLocale<C>,
         prefs: (indicators.prefs.decode(asString(params?.prefs)) ?? {}) as Prefs<C>,
         flags: (indicators.flags.decode(asString(params?.flags)) ?? {}) as Flags<C>,
       }
@@ -136,7 +206,7 @@ export const createNavigation = <C extends IndicatorsConfig>(
   const useHref = () => {
     const current = useLocale()
     return useCallback(
-      <T extends Href>(href: T, locale: Locale<C> = current): T =>
+      <T extends Href>(href: T, locale: Locale<C> | undefined = current): T =>
         mountHref(localizeHref(config, href, locale), mount),
       [current]
     )
@@ -172,6 +242,9 @@ export const createNavigation = <C extends IndicatorsConfig>(
     const toHref = useHref()
     return useCallback(
       (locale: Locale<C>) => {
+        if (config.locales.length === 0) {
+          throw new Error('useSetLocale: this site has no locales.')
+        }
         rememberLocale(locale)
         // `usePathname` is the public URL: the mount, the locale prefix if
         // any, and the page. Keep the page, and let the href carry the rest.
@@ -188,27 +261,45 @@ export const createNavigation = <C extends IndicatorsConfig>(
     )
   }
 
-  const usePref = <K extends keyof Prefs<C> & string>(
+  const usePref = <K extends PrefKey<C>>(
     key: K
-  ): [Prefs<C>[K], (value: Prefs<C>[K] | undefined) => void] => {
+  ): [PrefValue<C, K> | undefined, (value: PrefValue<C, K> | undefined) => void] => {
     const { prefs } = useIndicators()
     const router = useRouter()
-    const indicator = config.prefs.find((candidate) => candidate.key === key)
+    const inPath = config.prefs.find((candidate) => candidate.key === key)
+    const sheet = config.stylesheets.find(
+      (candidate) => candidate.kind === 'prefs' && candidate.key === key
+    )
+    const indicator = sheet ?? inPath
+
+    // A stylesheet preference is not in the params; the cookie is all there is.
+    const [fromCookie, setFromCookie] = useState<string | undefined>(undefined)
+    useEffect(() => {
+      if (sheet) setFromCookie(nameOf(sheet.values, readCookie(sheet.source.key)))
+    }, [sheet])
 
     const set = useCallback(
-      (value: Prefs<C>[K] | undefined) => {
+      (value: PrefValue<C, K> | undefined) => {
         if (!indicator || indicator.source.type !== 'cookie') {
           throw new Error(
             `usePref(${JSON.stringify(key)}): only a cookie-backed preference can be set from the client.`
           )
         }
         writeCookie(indicator.source.key, value as string | undefined, indicator.maxAge, cookiePath)
-        router.refresh()
+        if (sheet) {
+          setFromCookie(value as string | undefined)
+          reloadStylesheet(sheet.key)
+        } else {
+          router.refresh()
+        }
       },
-      [indicator, key, router]
+      [indicator, sheet, key, router]
     )
 
-    return [prefs[key], set]
+    const current = sheet
+      ? fromCookie
+      : (prefs as Record<string, string | undefined>)[key]
+    return [current as PrefValue<C, K> | undefined, set]
   }
 
   return { Link, useLocale, useSetLocale, useIndicators, useHref, usePref }

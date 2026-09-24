@@ -69,3 +69,6 @@ Each app negotiates among its own locales. See
 
 It imports `next/server`, which is why it is an entry point of its own:
 `@fairgarden/indicators` itself stays importable from a client module.
+
+A site in one language has nothing to negotiate, and `createLocaleProxy`
+refuses an app without locales rather than run for nothing.

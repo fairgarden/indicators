@@ -1,0 +1,119 @@
+# Stylesheets
+
+A site with many heavy pages cannot afford a copy of each per preference.
+It still has preferences, and most of them are things a stylesheet can
+express — a theme above all. So an indicator can be expressed through a
+stylesheet instead of a path segment:
+
+```ts
+export const indicators = createIndicators({
+  locales: ['en', 'fr'],
+  defaultLocale: 'en',
+  segments: ['locale'],
+  prefs: { theme: { values: ['light', 'dark'], stylesheet: '/theme.css' } },
+})
+```
+
+The route tree is then `app/[locale]/…`, every page has one copy per
+locale, and the theme is a tiny stylesheet the browser asks for on every
+page.
+
+A site in one language drops the locale as well:
+
+```ts
+export const indicators = createIndicators({
+  segments: [],
+  prefs: { theme: { values: ['light', 'dark'], stylesheet: '/theme.css' } },
+})
+```
+
+That is a plain `app/…` tree with nothing dynamic in it, no rewrite on any
+page, and one preference served as CSS. [Hard flags](/overview/hard-flags)
+still work there, at the front of the path.
+
+## How it is served
+
+Nothing runs for it. `/theme.css` is rewritten, by the same cookie match
+that would otherwise build a path segment, to one of three static files in
+`public/`, named after it and the value:
+
+```
+public/theme.light.css      cookie theme=light
+public/theme.dark.css       cookie theme=dark
+public/theme.default.css    no cookie, or any other value
+```
+
+and answered with `Cache-Control: private, no-cache, stale-if-error`. So
+the browser keeps its copy but asks every time, which is a 304 while the
+cookie has not changed and a new file once it has; no cache in front keeps
+it; and a stale copy stands in when the server cannot answer, since it is
+only ever the wrong theme. The files are a line each, so a fresh copy is
+barely heavier than the 304. The plugin says so at build time when one of
+them is missing.
+
+The layout links to it, after the app's own styles so that what it sets
+wins:
+
+```tsx
+import { Stylesheets } from '@fairgarden/indicators'
+
+<head>
+  <Stylesheets indicators={indicators} mount={mountPrefix('@fairgarden/id')} />
+</head>
+```
+
+A flag works the same way, from a header: `motion: { header:
+'sec-ch-prefers-reduced-motion', values: ['reduce'], stylesheet:
+'/motion.css' }` serves `/motion.reduce.css` to a browser that asks for
+less motion. Both stylesheets and the files they are rewritten to are
+excluded from the locale rewrite.
+
+## What the files say
+
+One declaration is enough when the palette is written for it. With colors
+as `light-dark()` pairs, `color-scheme` picks the mode:
+
+```css
+/* theme.dark.css */
+:root { color-scheme: dark; --theme: dark }
+/* theme.light.css */
+:root { color-scheme: light; --theme: light }
+/* theme.default.css */
+:root { color-scheme: light dark; --theme: system }
+```
+
+`light dark` follows the OS, so the default costs nothing. The same
+declaration on `[data-theme='dark']` serves the sites that keep the theme
+in the path, so one palette serves both kinds. A palette split into a light
+file and a dark file can instead be switched with a one-line `@import` of
+the right one, at the price of a dependent request.
+
+The custom property is for scripts. Nothing has to parse a cookie or guess
+the OS setting; the stylesheet that was served is the answer:
+
+```ts
+getComputedStyle(document.documentElement).getPropertyValue('--theme')   // 'dark'
+getComputedStyle(document.documentElement).colorScheme                    // 'dark'
+```
+
+Rendering never waits on a script. The link is ordinary render-blocking
+CSS, tiny, and applied before the first paint, so there is no flash of the
+wrong theme.
+
+## Changing it
+
+`usePref('theme')` works as for a preference in the path, with two
+differences. Setting it writes the cookie and then fetches the stylesheet
+again — a fresh `<link>` with a cache-busting query, after the layout's —
+so the change shows without a reload, and nothing server-rendered depends
+on it, so there is no refresh. And since the value is not in the params,
+the hook reads it from the cookie after mounting: it is `undefined` on the
+server and on the first render.
+
+## What it changes
+
+A stylesheet indicator is left out of the segment, of
+`generateStaticParams`, and of what `read` and `useIndicators` return; it
+does not multiply the pages, which is the point. It cannot switch what a
+page renders — that is what the [path](/overview/paths) is for — only how
+it looks.

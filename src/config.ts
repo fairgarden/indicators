@@ -22,6 +22,22 @@ export type Values = readonly string[] | Readonly<Record<string, string>>
 
 export interface IndicatorDefinition {
   values: Values
+  /**
+   * Express this indicator through a stylesheet instead of a path segment.
+   *
+   * The value is the public URL of the stylesheet a layout links to. A
+   * request for it is rewritten, by the same cookie or header match, to a
+   * sibling file named after it and the value — `/theme.css` becomes
+   * `/theme.dark.css` — or to `.default.css` when nothing matches, and it
+   * is served `private, no-cache` so the browser revalidates it on every
+   * page. The files are the app's, under `public/`, and are usually one
+   * line: `:root { color-scheme: dark; --theme: dark }`.
+   *
+   * The indicator then does not multiply the pages: it is left out of the
+   * segment, of `generateStaticParams` and of what `read` returns. For a
+   * site with many heavy pages that is the point.
+   */
+  stylesheet?: string
   /** Read from this cookie. The default source for a preference, named after it. */
   cookie?: string
   /** Read from this header. The default source for a flag, named after it. */
@@ -44,11 +60,30 @@ export interface IndicatorDefinition {
 
 export type Definitions = Readonly<Record<string, IndicatorDefinition>>
 
+export type Segment = 'locale' | 'prefs' | 'flags'
+
 export interface IndicatorsConfig {
-  /** Every locale the app serves, as it appears in the path: `en`, `fr-CA`. */
-  locales: readonly string[]
+  /**
+   * Which segments the route tree has. By default all three when there are
+   * locales, and the other two when there are none; a site that expresses
+   * its preferences through stylesheets can do with fewer:
+   *
+   *     segments: ['locale']      ->  app/[locale]/...
+   *     segments: []              ->  app/...
+   *
+   * An indicator without a `stylesheet` needs its segment, and so do the
+   * locales.
+   */
+  segments?: readonly Segment[]
+  /**
+   * Every locale the app serves, as it appears in the path: `en`, `fr-CA`.
+   * Leave it out for a site in one language: there is then no locale
+   * segment, nothing to negotiate at the root, and links are left as they
+   * are.
+   */
+  locales?: readonly string[]
   /** The locale served when the path names none. Must be one of `locales`. */
-  defaultLocale: string
+  defaultLocale?: string
   /**
    * `as-needed` keeps the default locale out of public URLs, so `/login` is
    * the default locale's login page and `/fr/login` is French. `always` gives
@@ -122,18 +157,43 @@ export interface NormalizedIndicator {
   maxAge: number
 }
 
+/** An indicator expressed through a stylesheet — see `IndicatorDefinition`. */
+export interface NormalizedStylesheet {
+  key: string
+  kind: 'prefs' | 'flags'
+  source: { type: SourceType; key: string }
+  values: NormalizedValue[]
+  /** The public URL a layout links to. */
+  href: string
+  /** `href` without its `.css`: what the files it is rewritten to are named after. */
+  base: string
+  maxAge: number
+}
+
 export interface NormalizedConfig {
+  /** The segments the tree has, in path order; `locale`, when there is one, first. */
+  segments: Segment[]
+  /** Empty for a site in one language, which then has no locale segment. */
   locales: string[]
-  defaultLocale: string
+  defaultLocale: string | undefined
   localePrefix: 'as-needed' | 'always'
   localeCookie: string | undefined
   /** Sorted by key, which is the order they take in the path. */
   prefs: NormalizedIndicator[]
   /** Sorted by key, which is the order they take in the path. */
   flags: NormalizedIndicator[]
+  /** Indicators expressed through a stylesheet, sorted by key. */
+  stylesheets: NormalizedStylesheet[]
   /** Top-level paths left alone, the built-in ones included. */
   exclude: string[]
 }
+
+/** The file a stylesheet indicator is rewritten to for one of its values. */
+export const stylesheetFile = (sheet: NormalizedStylesheet, value: string): string =>
+  `${sheet.base}.${value}.css`
+
+/** The file it is rewritten to when nothing matches. */
+export const DEFAULT_STYLESHEET = 'default'
 
 /** Paths Next serves itself, or that never belong to a locale. */
 export const ALWAYS_EXCLUDED = ['_next', 'api', '.well-known'] as const
@@ -215,12 +275,47 @@ const normalizeSource = (
   return { type, key: type === 'header' ? sourceKey.toLowerCase() : sourceKey }
 }
 
+const HREF = /^\/[^?#]*\.css$/
+
 const normalizeIndicators = (
   kind: 'prefs' | 'flags',
   definitions: Definitions | undefined
-): NormalizedIndicator[] =>
-  Object.entries(definitions ?? {})
-    .map(([key, definition]): NormalizedIndicator => {
+): { segment: NormalizedIndicator[]; stylesheets: NormalizedStylesheet[] } => {
+  const segment: NormalizedIndicator[] = []
+  const stylesheets: NormalizedStylesheet[] = []
+
+  for (const [key, definition] of Object.entries(definitions ?? {})) {
+    const indicator = normalizeIndicator(kind, key, definition)
+    if (definition.stylesheet === undefined) {
+      segment.push(indicator)
+      continue
+    }
+    const href = definition.stylesheet
+    if (typeof href !== 'string' || !HREF.test(href)) {
+      throw new Error(`${kind}.${key}.stylesheet must be a path ending in .css, such as "/theme.css".`)
+    }
+    stylesheets.push({
+      key,
+      kind,
+      source: indicator.source,
+      values: indicator.values,
+      href,
+      base: href.slice(0, -'.css'.length),
+      maxAge: indicator.maxAge,
+    })
+  }
+
+  return {
+    segment: segment.sort((a, b) => compareKeys(a.key, b.key)),
+    stylesheets: stylesheets.sort((a, b) => compareKeys(a.key, b.key)),
+  }
+}
+
+const normalizeIndicator = (
+  kind: 'prefs' | 'flags',
+  key: string,
+  definition: IndicatorDefinition
+): NormalizedIndicator => {
       if (!KEY.test(key)) {
         throw new Error(
           `${kind} key ${JSON.stringify(key)} cannot go in a path. Use letters, digits, ` +
@@ -239,8 +334,7 @@ const normalizeIndicators = (
         prerender: definition.prerender ?? true,
         maxAge: definition.maxAge ?? ONE_YEAR,
       }
-    })
-    .sort((a, b) => compareKeys(a.key, b.key))
+}
 
 /**
  * Check the hard flags given to the plugin. A name is a route segment, so
@@ -279,8 +373,11 @@ export const normalizeHardFlags = (
 export const normalizeConfig = (config: IndicatorsConfig): NormalizedConfig => {
   if (!config || typeof config !== 'object') throw new Error('createIndicators needs a config.')
 
+  const hasLocales = config.locales !== undefined
   const locales = [...(config.locales ?? [])]
-  if (locales.length === 0) throw new Error('locales must list at least one locale.')
+  if (hasLocales && locales.length === 0) {
+    throw new Error('locales must list at least one locale, or be left out.')
+  }
   for (const locale of locales) {
     if (typeof locale !== 'string' || !LOCALE.test(locale)) {
       throw new Error(`${JSON.stringify(locale)} is not usable as a locale segment.`)
@@ -289,10 +386,13 @@ export const normalizeConfig = (config: IndicatorsConfig): NormalizedConfig => {
   if (new Set(locales.map((locale) => locale.toLowerCase())).size !== locales.length) {
     throw new Error('locales lists the same locale twice.')
   }
-  if (!locales.includes(config.defaultLocale)) {
+  if (hasLocales && (config.defaultLocale === undefined || !locales.includes(config.defaultLocale))) {
     throw new Error(
       `defaultLocale ${JSON.stringify(config.defaultLocale)} is not one of the locales.`
     )
+  }
+  if (!hasLocales && config.defaultLocale !== undefined) {
+    throw new Error('defaultLocale is given, but there are no locales.')
   }
   if (
     config.localePrefix !== undefined &&
@@ -303,9 +403,40 @@ export const normalizeConfig = (config: IndicatorsConfig): NormalizedConfig => {
   }
 
   const localeCookie =
-    config.localeCookie === false ? undefined : (config.localeCookie ?? 'locale')
+    !hasLocales || config.localeCookie === false
+      ? undefined
+      : (config.localeCookie ?? 'locale')
   if (localeCookie !== undefined && (typeof localeCookie !== 'string' || localeCookie === '')) {
     throw new Error('localeCookie must be a cookie name, or false.')
+  }
+
+  const wanted = [
+    ...(config.segments ?? (hasLocales ? ['locale', 'prefs', 'flags'] : ['prefs', 'flags'])),
+  ]
+  for (const segment of wanted) {
+    if (segment !== 'locale' && segment !== 'prefs' && segment !== 'flags') {
+      throw new Error(`segments may hold "locale", "prefs" and "flags", not ${JSON.stringify(segment)}.`)
+    }
+  }
+  if (hasLocales && !wanted.includes('locale')) {
+    throw new Error('locales are given, but segments leaves the locale segment out.')
+  }
+  if (!hasLocales && wanted.includes('locale')) {
+    throw new Error('segments has a locale segment, but no locales are given.')
+  }
+  const segments: Segment[] = (['locale', 'prefs', 'flags'] as const).filter((segment) =>
+    wanted.includes(segment)
+  )
+
+  const prefs = normalizeIndicators('prefs', config.prefs)
+  const flags = normalizeIndicators('flags', config.flags)
+  for (const [kind, list] of [['prefs', prefs.segment], ['flags', flags.segment]] as const) {
+    if (list.length > 0 && !segments.includes(kind)) {
+      throw new Error(
+        `${kind}.${list[0].key} goes in the ${kind} segment, which segments leaves out. ` +
+          `Add "${kind}" to segments, or give it a stylesheet.`
+      )
+    }
   }
 
   const exclude = [...ALWAYS_EXCLUDED, ...(config.exclude ?? [])]
@@ -322,13 +453,26 @@ export const normalizeConfig = (config: IndicatorsConfig): NormalizedConfig => {
     }
   }
 
+  const stylesheets = [...prefs.stylesheets, ...flags.stylesheets].sort((a, b) =>
+    compareKeys(a.key, b.key)
+  )
+  const seen = new Set<string>()
+  for (const sheet of stylesheets) {
+    if (seen.has(sheet.href)) {
+      throw new Error(`Two indicators share the stylesheet ${sheet.href}; each needs its own.`)
+    }
+    seen.add(sheet.href)
+  }
+
   return {
+    segments,
     locales,
     defaultLocale: config.defaultLocale,
     localePrefix: config.localePrefix ?? 'as-needed',
     localeCookie,
-    prefs: normalizeIndicators('prefs', config.prefs),
-    flags: normalizeIndicators('flags', config.flags),
+    prefs: prefs.segment,
+    flags: flags.segment,
+    stylesheets,
     exclude: [...new Set(exclude)],
   }
 }

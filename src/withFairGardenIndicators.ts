@@ -1,12 +1,20 @@
-import { readdirSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import type { NextConfig } from 'next'
-import { normalizeHardFlags, type HardFlags, type IndicatorsConfig } from './config.ts'
+import {
+  DEFAULT_STYLESHEET,
+  normalizeHardFlags,
+  stylesheetFile,
+  type HardFlags,
+  type IndicatorsConfig,
+  type NormalizedConfig,
+} from './config.ts'
 import type { Indicators } from './indicators.ts'
 import {
   hardFlagRewrites,
   indicatorsRedirects,
   indicatorsRewrites,
+  stylesheetHeaders,
   type Rewrite,
   type RewriteOptions,
 } from './routes.ts'
@@ -46,6 +54,36 @@ export interface PluginOptions {
 type Phases = { beforeFiles: Rewrite[]; afterFiles: Rewrite[]; fallback: Rewrite[] }
 type Rewrites = Awaited<ReturnType<NonNullable<NextConfig['rewrites']>>>
 type Redirects = Awaited<ReturnType<NonNullable<NextConfig['redirects']>>>
+type Headers = Awaited<ReturnType<NonNullable<NextConfig['headers']>>>
+
+const REPORTED_ENV = '__FG_INDICATORS_STYLESHEETS_REPORTED'
+
+/**
+ * Say so when the files a stylesheet indicator is rewritten to are not in
+ * `public/`. A missing one is a 404 for the stylesheet and a theme that
+ * quietly never applies, which is worth a line at build time. Next reads the
+ * config in the main process and again in a build worker, which inherits
+ * the environment, so the marker keeps it to one report.
+ */
+const reportMissingStylesheets = (root: string, config: NormalizedConfig): void => {
+  const missing: string[] = []
+  for (const sheet of config.stylesheets) {
+    const names = [...sheet.values.map((value) => value.name), DEFAULT_STYLESHEET]
+    for (const name of names) {
+      const file = path.join(root, 'public', stylesheetFile(sheet, name))
+      if (!existsSync(file)) missing.push(path.relative(root, file))
+    }
+  }
+  if (missing.length === 0) return
+  const seen = (process.env[REPORTED_ENV] ?? '').split(path.delimiter)
+  if (seen.includes(root)) return
+  process.env[REPORTED_ENV] = [...seen.filter(Boolean), root].join(path.delimiter)
+  process.stderr.write(
+    `These stylesheets are rewritten to files that are not in public/:\n${missing
+      .map((file) => `  - ${file}`)
+      .join('\n')}\n`
+  )
+}
 
 const toPhases = (rewrites: Rewrites | undefined): Phases => {
   if (!rewrites) return { beforeFiles: [], afterFiles: [], fallback: [] }
@@ -199,11 +237,18 @@ export const withFairGardenIndicators = <C extends IndicatorsConfig>(
     options.detectExclusions === false ? {} : detectExclusions(root)
   const hard = hardFlagRewrites(
     indicators.config,
-    normalizeHardFlags(options.hardFlags, indicators.config)
+    normalizeHardFlags(options.hardFlags, indicators.config),
+    detected
   )
+  if (options.detectExclusions !== false) reportMissingStylesheets(root, indicators.config)
 
   return {
     ...nextConfig,
+    headers: async () =>
+      [
+        ...((await call(nextConfig.headers)) ?? []),
+        ...stylesheetHeaders(indicators.config),
+      ] as Headers,
     rewrites: async () => {
       const own = toPhases(await call(nextConfig.rewrites))
       return {

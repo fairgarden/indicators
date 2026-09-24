@@ -37,8 +37,9 @@ and not a request. The generic is `const`, so the types of `read`,
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `locales` | — | every locale served, as it appears in the path |
-| `defaultLocale` | — | the one served when the path names none; must be listed |
+| `segments` | all three, or `['prefs', 'flags']` without locales | which segments the tree has. See [Stylesheets](/overview/stylesheets) |
+| `locales` | — | every locale served, as it appears in the path; leave it out for a site in one language |
+| `defaultLocale` | — | the one served when the path names none; must be listed, and is given only with `locales` |
 | `localePrefix` | `'as-needed'` | `'always'` prefixes the default locale too. See [Locales](/overview/locales) |
 | `localeCookie` | `'locale'` | the cookie a chosen locale is remembered in, read by the proxy at the root; `false` for none |
 | `prefs` | `{}` | choices the user made, keyed by the name that goes in the path |
@@ -50,6 +51,11 @@ are letters, digits, `_` and `-`, starting with a letter or digit.
 Duplicates, a default that is not listed, and a locale that is also excluded
 are refused.
 
+A site in one language leaves `locales` out. There is then no locale
+segment, no redirect, nothing for a proxy to negotiate, and `Link` leaves
+hrefs as they are; with `segments: []` the tree is a plain `app/…`, and the
+preferences it keeps are [stylesheets](/overview/stylesheets).
+
 ## An indicator
 
 | Field | Default | Meaning |
@@ -60,6 +66,7 @@ are refused.
 | `query` | — | read from this query parameter |
 | `prerender` | `true` | include in `generateStaticParams` |
 | `maxAge` | one year | seconds a cookie written by `usePref` lives |
+| `stylesheet` | — | express it through this stylesheet instead of the path. See [Stylesheets](/overview/stylesheets) |
 
 Exactly one of `cookie`, `header` and `query`. A value is letters, digits,
 `_` and `-`, starting with a letter or digit — nothing a URL would
@@ -79,6 +86,8 @@ config and a few facts:
 | Member | |
 | --- | --- |
 | `config` | the config with defaults filled in and indicators sorted by key |
+| `segments` | the segments the tree has, in path order |
+| `stylesheets()` | the links a layout renders, one per stylesheet indicator; `<Stylesheets>` does it |
 | `locales`, `defaultLocale` | as given, typed to the literals |
 | `isLocale(value)` | a type guard for a supported locale |
 | `locale`, `prefs`, `flags` | the [per-level](/functions/generateStaticParams) objects |

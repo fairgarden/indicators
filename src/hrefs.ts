@@ -40,9 +40,11 @@ export const splitLocale = (
 export const localizePath = (
   config: NormalizedConfig,
   href: string,
-  locale: string
+  locale: string | undefined
 ): string => {
   if (!href.startsWith('/') || href.startsWith('//')) return href
+  // A site in one language has nothing to add.
+  if (locale === undefined || config.locales.length === 0) return href
 
   const end = pathEnd(href)
   const pathname = href.slice(0, end)
@@ -60,7 +62,7 @@ export const localizePath = (
 export const localizeHref = <T extends Href>(
   config: NormalizedConfig,
   href: T,
-  locale: string
+  locale: string | undefined
 ): T => {
   if (typeof href === 'string') return localizePath(config, href, locale) as T
   if (href && typeof href === 'object' && typeof href.pathname === 'string') {

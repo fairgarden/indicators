@@ -282,3 +282,171 @@ test('does not quarantine a lookalike', () => {
   assert.equal(serve('/betamax/login'.replace('/login', '')), '404 /en/-/-/betamax')
   assert.equal(resolve(withHard, '/betamax'), '/en/-/-/betamax')
 })
+
+// ---- segments ----------------------------------------------------------------
+
+import { stylesheetHeaders } from '../dist/routes.js'
+
+test('inserts only the segments the tree has', () => {
+  const only = normalizeConfig({ locales: ['en', 'fr'], defaultLocale: 'en', segments: ['locale'] })
+  const chain = indicatorsRewrites(only)
+  checkCustomRoutes(chain, 'rewrite')
+  assert.equal(chain.length, 2)
+  assert.equal(resolve(chain, '/'), '/en')
+  assert.equal(resolve(chain, '/login'), '/en/login')
+  assert.equal(resolve(chain, '/fr/login'), '/fr/login')
+  assert.equal(resolve(chain, '/login', { cookie: 'theme=dark' }), '/en/login')
+
+  const flagsOnly = normalizeConfig({
+    locales: ['en'],
+    defaultLocale: 'en',
+    segments: ['locale', 'flags'],
+    flags: { tz: { header: 'x-vercel-ip-timezone', values: { EST: 'America/New_York' } } },
+  })
+  const flagsChain = indicatorsRewrites(flagsOnly)
+  checkCustomRoutes(flagsChain, 'rewrite')
+  assert.equal(resolve(flagsChain, '/login'), '/en/-/login')
+  assert.equal(resolve(flagsChain, '/login', { 'x-vercel-ip-timezone': 'America/New_York' }), '/en/tz~EST/login')
+
+  const prefsOnly = normalizeConfig({
+    locales: ['en'],
+    defaultLocale: 'en',
+    segments: ['locale', 'prefs'],
+    prefs: { theme: { values: ['dark'] }, tz: { values: ['EST'] } },
+  })
+  const prefsChain = indicatorsRewrites(prefsOnly)
+  checkCustomRoutes(prefsChain, 'rewrite')
+  assert.equal(resolve(prefsChain, '/login'), '/en/-/login')
+  assert.equal(resolve(prefsChain, '/login', { cookie: 'tz=EST; theme=dark' }), '/en/theme~dark.tz~EST/login')
+})
+
+test('puts hard flags straight after the locale when there are no other segments', () => {
+  const only = normalizeConfig({ locales: ['en', 'fr'], defaultLocale: 'en', segments: ['locale'] })
+  const hardOnly = hardFlagRewrites(only, normalizeHardFlags({ beta: { values: ['secret'] } }, only))
+  checkCustomRoutes(hardOnly.beforeFiles, 'rewrite')
+  checkCustomRoutes(hardOnly.fallback, 'rewrite')
+  const chain = [...indicatorsRewrites(only), ...hardOnly.beforeFiles]
+  assert.equal(resolve(chain, '/login', { cookie: 'beta=secret' }), '/en/beta/login')
+  assert.equal(resolve(chain, '/beta/login'), '/en/-/beta/login')
+  assert.equal(resolve(chain, '/beta/login', { cookie: 'beta=secret' }), '/en/beta/-/beta/login')
+})
+
+// ---- stylesheets -------------------------------------------------------------
+
+const styled = normalizeConfig({
+  locales: ['en'],
+  defaultLocale: 'en',
+  segments: ['locale'],
+  prefs: { theme: { values: ['light', 'dark'], stylesheet: '/theme.css' } },
+  flags: {
+    motion: { header: 'Sec-CH-Prefers-Reduced-Motion', values: ['reduce'], stylesheet: '/css/motion.css' },
+  },
+})
+
+test('rewrites a stylesheet to the file for the matching value, else the default', () => {
+  const chain = indicatorsRewrites(styled)
+  checkCustomRoutes(chain, 'rewrite')
+  assert.equal(resolve(chain, '/theme.css'), '/theme.default.css')
+  assert.equal(resolve(chain, '/theme.css', { cookie: 'theme=dark' }), '/theme.dark.css')
+  assert.equal(resolve(chain, '/theme.css', { cookie: 'theme=light' }), '/theme.light.css')
+  assert.equal(resolve(chain, '/theme.css', { cookie: 'theme=blue' }), '/theme.default.css')
+  assert.equal(resolve(chain, '/css/motion.css', { 'sec-ch-prefers-reduced-motion': 'reduce' }), '/css/motion.reduce.css')
+  assert.equal(resolve(chain, '/css/motion.css'), '/css/motion.default.css')
+})
+
+test('never localizes a stylesheet or the files it is rewritten to', () => {
+  const chain = indicatorsRewrites(styled)
+  assert.equal(resolve(chain, '/theme.dark.css'), '/theme.dark.css')
+  assert.equal(resolve(chain, '/css/motion.reduce.css'), '/css/motion.reduce.css')
+  // and the indicator plays no part in the page's path
+  assert.equal(resolve(chain, '/login', { cookie: 'theme=dark' }), '/en/login')
+})
+
+test('tells the browser to ask for a stylesheet again on every page', () => {
+  assert.deepEqual(stylesheetHeaders(styled), [
+    {
+      source: '/css/motion.css',
+      headers: [{ key: 'Cache-Control', value: 'private, no-cache, stale-if-error=86400' }],
+    },
+    {
+      source: '/theme.css',
+      headers: [{ key: 'Cache-Control', value: 'private, no-cache, stale-if-error=86400' }],
+    },
+  ])
+  checkCustomRoutes(stylesheetHeaders(styled), 'header')
+})
+
+// ---- a site in one language --------------------------------------------------
+
+/** One fallback pass: the first strip that matches, applied once. */
+const stripOnce = (fallback, pathname) => {
+  for (const rewrite of fallback) {
+    const params = getPathMatch(rewrite.source, { strict: true, removeUnnamedParams: true })(pathname)
+    if (!params) continue
+    return prepareDestination({
+      appendParamsToQuery: true,
+      destination: rewrite.destination,
+      params,
+      query: {},
+    }).parsedDestination.pathname
+  }
+  return pathname
+}
+
+test('needs no locale step for a site in one language', () => {
+  const none = normalizeConfig({ prefs: { theme: { values: ['dark'] } } })
+  const chain = indicatorsRewrites(none, { exclude: ['next.svg'] })
+  checkCustomRoutes(chain, 'rewrite')
+  assert.equal(resolve(chain, '/'), '/-/-')
+  assert.equal(resolve(chain, '/login'), '/-/-/login')
+  assert.equal(resolve(chain, '/login', { cookie: 'theme=dark' }), '/theme~dark/-/login')
+  for (const path of ['/_next/static/chunks/a.js', '/api/x', '/next.svg', '/.well-known/x']) {
+    assert.equal(resolve(chain, path, { cookie: 'theme=dark' }), path)
+  }
+  assert.deepEqual(indicatorsRedirects(none), [])
+})
+
+test('anchors the first segment without a locale, so Next-owned paths are untouched', () => {
+  const flagsOnly = normalizeConfig({
+    segments: ['flags'],
+    flags: { tz: { header: 'x-vercel-ip-timezone', values: { EST: 'America/New_York' } } },
+  })
+  const chain = indicatorsRewrites(flagsOnly)
+  checkCustomRoutes(chain, 'rewrite')
+  const inNewYork = { 'x-vercel-ip-timezone': 'America/New_York', cookie: 'beta=s' }
+  assert.equal(resolve(chain, '/login', inNewYork), '/tz~EST/login')
+  assert.equal(resolve(chain, '/_next/static/x.js', inNewYork), '/_next/static/x.js')
+  const hard = hardFlagRewrites(flagsOnly, normalizeHardFlags({ beta: { values: ['s'] } }, flagsOnly))
+  const all = [...chain, ...hard.beforeFiles]
+  assert.equal(resolve(all, '/_next/static/x.js', inNewYork), '/_next/static/x.js')
+  assert.equal(resolve(all, '/login', inNewYork), '/tz~EST/beta/login')
+})
+
+test('has only its stylesheets to rewrite for a site with neither locales nor segments', () => {
+  const bare = normalizeConfig({ segments: [], prefs: { theme: { values: ['dark'], stylesheet: '/theme.css' } } })
+  const chain = indicatorsRewrites(bare)
+  assert.equal(chain.length, 2)
+  assert.equal(resolve(chain, '/login', { cookie: 'theme=dark' }), '/login')
+  assert.equal(resolve(chain, '/theme.css', { cookie: 'theme=dark' }), '/theme.dark.css')
+})
+
+test('puts a hard segment at the front when there is no segment at all', () => {
+  const bare = normalizeConfig({ segments: [] })
+  const hard = hardFlagRewrites(bare, normalizeHardFlags({ beta: { values: ['secret'] } }, bare), {
+    exclude: ['next.svg'],
+  })
+  checkCustomRoutes(hard.beforeFiles, 'rewrite')
+  checkCustomRoutes(hard.fallback, 'rewrite')
+  const chain = hard.beforeFiles
+  assert.equal(resolve(chain, '/', { cookie: 'beta=secret' }), '/beta')
+  assert.equal(resolve(chain, '/login', { cookie: 'beta=secret' }), '/beta/login')
+  assert.equal(resolve(chain, '/login'), '/login')
+  for (const path of ['/_next/static/a.js', '/next.svg', '/api/x']) {
+    assert.equal(resolve(chain, path, { cookie: 'beta=secret' }), path)
+  }
+  assert.equal(resolve(chain, '/beta/login'), '/-/beta/login')
+  assert.equal(resolve(chain, '/beta/login', { cookie: 'beta=secret' }), '/beta/-/beta/login')
+  assert.equal(stripOnce(hard.fallback, '/beta'), '/')
+  assert.equal(stripOnce(hard.fallback, '/beta/about'), '/about')
+  assert.equal(stripOnce(hard.fallback, '/-/beta/login'), '/-/beta/login')
+})

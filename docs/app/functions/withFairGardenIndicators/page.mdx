@@ -27,8 +27,9 @@ export default withFairGardenIndicators(nextConfig, indicators)
 ```
 
 The app's own `beforeFiles` rewrites run first, then the chain; the app's
-redirects come first too. A bare `rewrites` array is treated as `afterFiles`,
-as Next does.
+redirects and headers come first too. A bare `rewrites` array is treated as
+`afterFiles`, as Next does. The headers it adds are the cache policy of each
+[stylesheet](/overview/stylesheets) indicator.
 
 ## Options
 

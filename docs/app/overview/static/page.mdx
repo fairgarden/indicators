@@ -112,6 +112,12 @@ The same works one level up, for a preference: `app/[locale]/theme~dark/…`
 is a page tree that only the dark theme sees, and its layout then reads the
 locale alone.
 
+## Preferences that need no variant
+
+A preference that only changes how a page looks can be a
+[stylesheet](/overview/stylesheets) instead of a segment. It then multiplies
+nothing, and a tree can drop the segments it does not use.
+
 ## What makes a page dynamic anyway
 
 Prerendering happens only if the page does not opt out. `cookies()`,

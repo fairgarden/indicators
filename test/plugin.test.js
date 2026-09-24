@@ -146,3 +146,69 @@ test('adds hard flag rewrites after the chain, and their strips to fallback', as
   assert.equal(rewrites.fallback.length, 2)
   assert.match(rewrites.fallback[1].source, /\/beta\/:path\*$/)
 })
+
+const styled = createIndicators({
+  locales: ['en', 'fr'],
+  defaultLocale: 'en',
+  segments: ['locale'],
+  prefs: { theme: { values: ['light', 'dark'], stylesheet: '/theme.css' } },
+})
+
+test("adds a cache policy per stylesheet after the app's own headers, and its rewrites first", async () => {
+  const config = withFairGardenIndicators(
+    { headers: async () => [{ source: '/x', headers: [{ key: 'a', value: 'b' }] }] },
+    styled,
+    { root: fixture(), detectExclusions: false }
+  )
+  const headers = await config.headers()
+  assert.deepEqual(headers, [
+    { source: '/x', headers: [{ key: 'a', value: 'b' }] },
+    { source: '/theme.css', headers: [{ key: 'Cache-Control', value: 'private, no-cache, stale-if-error=86400' }] },
+  ])
+  const rewrites = await config.rewrites()
+  assert.equal(rewrites.beforeFiles[0].source, '/theme.css')
+  // two values and the default, then the root and the localize step: no empty segments
+  assert.equal(rewrites.beforeFiles.length, 3 + 2)
+  assert.deepEqual(await withFairGardenIndicators({}, indicators, { root: fixture() }).headers(), [])
+})
+
+test('reports the files a stylesheet needs when they are not in public/', async () => {
+  const written = []
+  const original = process.stderr.write
+  process.stderr.write = (chunk) => (written.push(String(chunk)), true)
+  try {
+    const bare = fixture()
+    withFairGardenIndicators({}, styled, { root: bare })
+    assert.match(written.join(''), /theme\.light\.css/)
+    assert.match(written.join(''), /theme\.default\.css/)
+    // once per app, however often Next loads the config
+    withFairGardenIndicators({}, styled, { root: bare })
+    assert.equal(written.length, 1)
+
+    const complete = fixture()
+    for (const name of ['light', 'dark', 'default']) {
+      writeFileSync(path.join(complete, 'public', `theme.${name}.css`), '')
+    }
+    withFairGardenIndicators({}, styled, { root: complete })
+    assert.equal(written.length, 1)
+  } finally {
+    process.stderr.write = original
+  }
+})
+
+test('adds no redirects or locale rewrites for a site in one language', async () => {
+  const single = createIndicators({
+    segments: [],
+    prefs: { theme: { values: ['dark'], stylesheet: '/theme.css' } },
+  })
+  const config = withFairGardenIndicators({}, single, {
+    root: fixture(),
+    detectExclusions: false,
+    hardFlags: { beta: { values: ['s'] } },
+  })
+  assert.deepEqual(await config.redirects(), [])
+  const rewrites = await config.rewrites()
+  // the stylesheet's two, then the quarantine and the two injections
+  assert.equal(rewrites.beforeFiles.length, 2 + 3)
+  assert.equal(rewrites.fallback.length, 2)
+})

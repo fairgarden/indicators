@@ -18,7 +18,8 @@ export default async function Page({ params }: PageProps<'/[locale]/[prefs]/[fla
 ```
 
 `prefs` and `flags` are objects keyed by indicator, each value one of its
-names or `undefined`, typed from the config. The combined form needs all
+names or `undefined`, typed from the config; `locale` is `undefined` for a
+site in one language. The combined form needs all
 three params, so it belongs at or below the flags segment; the per-level
 forms need only their own.
 

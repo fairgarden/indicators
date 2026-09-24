@@ -4,6 +4,7 @@ import {
   type Definitions,
   type IndicatorsConfig,
   type NormalizedConfig,
+  type Segment,
   type Values,
 } from './config.ts'
 import { localizeHref, splitLocale, type Href } from './hrefs.ts'
@@ -21,14 +22,51 @@ type Names<V extends Values> = V extends readonly (infer T)[]
       : never
     : never
 
-/** The object a segment decodes to: each key optional, each value one of its names. */
+/**
+ * The object a segment decodes to: each key optional, each value one of its
+ * names. An indicator expressed through a stylesheet is not in the segment.
+ */
 export type Chosen<D extends Definitions | undefined> = D extends Definitions
-  ? { [K in keyof D & string]?: Names<D[K]['values']> }
+  ? {
+      [K in keyof D & string as D[K] extends { stylesheet: string } ? never : K]?: Names<
+        D[K]['values']
+      >
+    }
   : Record<never, never>
 
-export type Locale<C extends IndicatorsConfig> = C['locales'][number]
+export type Locale<C extends IndicatorsConfig> = C['locales'] extends readonly (infer L)[]
+  ? L extends string
+    ? L
+    : never
+  : never
 export type Prefs<C extends IndicatorsConfig> = Chosen<C['prefs']>
 export type Flags<C extends IndicatorsConfig> = Chosen<C['flags']>
+
+/** Whether the config has locales at all. */
+type HasLocale<C extends IndicatorsConfig> = C['locales'] extends readonly string[] ? true : false
+
+/** The locale a page is in: one of the locales, or undefined for a site in one language. */
+export type CurrentLocale<C extends IndicatorsConfig> = HasLocale<C> extends true
+  ? Locale<C>
+  : undefined
+
+/** Every preference's key, stylesheet-backed ones included, for `usePref`. */
+export type PrefKey<C extends IndicatorsConfig> = C['prefs'] extends Definitions
+  ? keyof C['prefs'] & string
+  : never
+export type PrefValue<C extends IndicatorsConfig, K extends PrefKey<C>> =
+  C['prefs'] extends Definitions ? Names<C['prefs'][K]['values']> : never
+
+/** Whether the tree has a segment, from `segments` when given and otherwise yes. */
+type HasSegment<C extends IndicatorsConfig, S extends 'prefs' | 'flags'> =
+  C['segments'] extends readonly (infer T)[] ? (S extends T ? true : false) : true
+
+/** What the combined `generateStaticParams` returns: a key per segment the tree has. */
+export type StaticParams<C extends IndicatorsConfig> = (HasLocale<C> extends true
+  ? { locale: Locale<C> }
+  : Record<never, never>) &
+  (HasSegment<C, 'prefs'> extends true ? { prefs: string } : Record<never, never>) &
+  (HasSegment<C, 'flags'> extends true ? { flags: string } : Record<never, never>)
 
 /** Route params as Next hands them to a layout or page: the object, or a promise of it. */
 export type Params = Record<string, string | string[] | undefined>
@@ -77,34 +115,57 @@ export interface SegmentLevel<Param extends string, Value, Extra>
 }
 
 export interface Resolved<C extends IndicatorsConfig> {
-  locale: Locale<C>
+  locale: CurrentLocale<C>
   prefs: Prefs<C>
   flags: Flags<C>
+}
+
+/** A stylesheet a layout links to, for an indicator expressed that way. */
+export interface Stylesheet {
+  key: string
+  kind: 'prefs' | 'flags'
+  /** Its public URL, without any mount prefix. */
+  href: string
 }
 
 export interface Indicators<C extends IndicatorsConfig> {
   /** The config with its defaults filled in, sorted the way the path is. */
   config: NormalizedConfig
+  /** The segments the tree has, in path order. */
+  segments: Segment[]
+  /** Empty for a site in one language. */
   locales: Locale<C>[]
-  defaultLocale: Locale<C>
+  defaultLocale: CurrentLocale<C>
   isLocale: (value: unknown) => value is Locale<C>
 
-  locale: Level<'locale', Locale<C>, { locale: Locale<C> }>
+  /**
+   * The locale segment. For a site in one language, `generateStaticParams`
+   * is empty and `read` is undefined.
+   */
+  locale: Level<'locale', CurrentLocale<C>, { locale: CurrentLocale<C> }>
+  /**
+   * The preferences segment. When the tree has none, `generateStaticParams`
+   * is empty and `read` is `{}`, so shared code needs no branch.
+   */
   prefs: SegmentLevel<'prefs', Prefs<C>, { prefs: Prefs<C> }>
+  /** The flags segment, likewise. */
   flags: SegmentLevel<'flags', Flags<C>, { flags: Flags<C> }>
 
-  /** All three segments at once, for a layout or page at or below the flags segment. */
-  generateStaticParams: () => Array<{ locale: Locale<C>; prefs: string; flags: string }>
+  /** All segments at once, for a layout or page at or below the last of them. */
+  generateStaticParams: () => StaticParams<C>[]
   read: (params: ParamsInput) => Promise<Resolved<C>>
   layout: (render: Render<Resolved<C>>) => (props: LayoutProps) => Promise<ReactNode>
   page: (render: PageRender<Resolved<C>>) => (props: PageProps) => Promise<ReactNode>
+
+  /** The stylesheets a layout has to link to, one per indicator expressed that way. */
+  stylesheets: () => Stylesheet[]
 
   /** Move an app-relative href into a locale, by the rules `localePrefix` sets. */
   href: <T extends Href>(href: T, locale: Locale<C>) => T
   /** The locale a public path starts with, if any, and the path without it. */
   splitLocale: (pathname: string) => { locale: Locale<C> | undefined; pathname: string }
   /** The supported locale an `Accept-Language` header asks for, else the default. */
-  negotiate: (acceptLanguage: string | null | undefined) => Locale<C>
+  negotiate: (acceptLanguage: string | null | undefined) => CurrentLocale<C>
 }
 
 const resolveParams = async (params: ParamsInput): Promise<Params> =>
@@ -145,24 +206,29 @@ export const createIndicators = <const C extends IndicatorsConfig>(
 ): Indicators<C> => {
   const normalized = normalizeConfig(config)
   type L = Locale<C>
+  type Current = CurrentLocale<C>
+  const hasLocale = normalized.segments.includes('locale')
 
   const isLocale = (value: unknown): value is L =>
     typeof value === 'string' && normalized.locales.includes(value)
 
-  const readLocale = async (params: ParamsInput): Promise<L> => {
+  const readLocale = async (params: ParamsInput): Promise<Current> => {
+    if (!hasLocale) return undefined as Current
     const { locale } = await resolveParams(params)
     if (!isLocale(locale)) return notFound()
-    return locale
+    return locale as Current
   }
 
   const segment = <Value extends Record<string, string | undefined>>(
     kind: 'prefs' | 'flags'
   ) => {
     const indicators = normalized[kind]
+    const present = normalized.segments.includes(kind)
     const decode = (value: string | undefined): Value | undefined =>
       decodeSegment(indicators, value) as Value | undefined
 
     const read = async (params: ParamsInput): Promise<Value> => {
+      if (!present) return {} as Value
       const resolved = await resolveParams(params)
       const value = resolved[kind]
       const decoded = decode(typeof value === 'string' ? value : undefined)
@@ -174,7 +240,11 @@ export const createIndicators = <const C extends IndicatorsConfig>(
       encode: (chosen: Value) => encodeSegment(indicators, chosen),
       decode,
       generateStaticParams: () =>
-        staticSegments(indicators).map((value) => ({ [kind]: value }) as Record<typeof kind, string>),
+        present
+          ? staticSegments(indicators).map(
+              (value) => ({ [kind]: value }) as Record<typeof kind, string>
+            )
+          : [],
       read,
       layout:
         (render: Render<Record<typeof kind, Value>>) =>
@@ -202,8 +272,9 @@ export const createIndicators = <const C extends IndicatorsConfig>(
 
   return {
     config: normalized,
+    segments: normalized.segments,
     locales: normalized.locales as L[],
-    defaultLocale: normalized.defaultLocale as L,
+    defaultLocale: normalized.defaultLocale as Current,
     isLocale,
 
     locale: {
@@ -219,16 +290,29 @@ export const createIndicators = <const C extends IndicatorsConfig>(
     prefs: prefs as unknown as Indicators<C>['prefs'],
     flags: flags as unknown as Indicators<C>['flags'],
 
-    generateStaticParams: () =>
-      normalized.locales.flatMap((locale) =>
-        staticSegments(normalized.prefs).flatMap((prefsSegment) =>
-          staticSegments(normalized.flags).map((flagsSegment) => ({
-            locale: locale as L,
-            prefs: prefsSegment,
-            flags: flagsSegment,
-          }))
+    generateStaticParams: () => {
+      // No segment, no params: a tree with nothing dynamic has nothing to list.
+      if (normalized.segments.length === 0) return []
+      const locales: Array<string | undefined> = hasLocale ? normalized.locales : [undefined]
+      const prefsSegments = normalized.segments.includes('prefs')
+        ? staticSegments(normalized.prefs)
+        : [undefined]
+      const flagsSegments = normalized.segments.includes('flags')
+        ? staticSegments(normalized.flags)
+        : [undefined]
+      return locales.flatMap((locale) =>
+        prefsSegments.flatMap((prefsSegment) =>
+          flagsSegments.map(
+            (flagsSegment) =>
+              ({
+                ...(locale === undefined ? {} : { locale }),
+                ...(prefsSegment === undefined ? {} : { prefs: prefsSegment }),
+                ...(flagsSegment === undefined ? {} : { flags: flagsSegment }),
+              }) as StaticParams<C>
+          )
         )
-      ),
+      )
+    },
     read,
     layout:
       (render) =>
@@ -243,10 +327,15 @@ export const createIndicators = <const C extends IndicatorsConfig>(
         return render({ params: resolved, searchParams, ...(await read(resolved)) })
       },
 
+    stylesheets: () =>
+      normalized.stylesheets.map(({ key, kind, href }) => ({ key, kind, href })),
+
     href: (href, locale) => localizeHref(normalized, href, locale),
     splitLocale: (pathname) =>
       splitLocale(normalized, pathname) as { locale: L | undefined; pathname: string },
     negotiate: (acceptLanguage) =>
-      negotiateLocale(acceptLanguage, normalized.locales, normalized.defaultLocale) as L,
+      (normalized.defaultLocale === undefined
+        ? undefined
+        : negotiateLocale(acceptLanguage, normalized.locales, normalized.defaultLocale)) as Current,
   }
 }

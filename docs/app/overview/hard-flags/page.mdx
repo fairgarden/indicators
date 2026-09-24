@@ -25,6 +25,11 @@ else, so it inherits the root layout at the flags level, and it is
 prerendered like any other page: `generateStaticParams` already covers the
 three segments above it, and the segment itself is a literal.
 
+With no segment at all — a site in one language whose preferences are
+stylesheets — the hard segment goes at the front instead: `/login` becomes
+`/beta/login`, served by `app/beta/login/page.tsx`, and the root becomes
+`/beta`.
+
 ## Why not a flag
 
 A flag `beta` would put `beta~on` into the flags segment, and switching

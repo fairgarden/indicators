@@ -90,3 +90,7 @@ test('serves several apps from one proxy, keyed by mount', () => {
 test('needs at least one app', () => {
   assert.throws(() => createLocaleProxy({}), /at least one app/)
 })
+
+test('refuses a site with no locales', () => {
+  assert.throws(() => createLocaleProxy(createIndicators({ segments: [] })), /no locales/)
+})

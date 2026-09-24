@@ -39,7 +39,7 @@ export interface ProxyOptions {
 export interface ProxyApp {
   config: NormalizedConfig
   isLocale: (value: unknown) => value is string
-  negotiate: (acceptLanguage: string | null | undefined) => string
+  negotiate: (acceptLanguage: string | null | undefined) => string | undefined
 }
 
 /** Mount prefix -> the indicators of the app served there. */
@@ -86,6 +86,13 @@ export const createLocaleProxy = (
     : Object.entries(indicators).map(([mount, app]) => [normalizeMount(mount), app])
 
   if (mounts.length === 0) throw new Error('createLocaleProxy needs at least one app.')
+  for (const [mount, app] of mounts) {
+    if (app.config.locales.length === 0) {
+      throw new Error(
+        `The app at ${mount || '/'} has no locales, so there is nothing for a proxy to negotiate.`
+      )
+    }
+  }
 
   const proxy = (request: NextRequest): NextResponse => {
     const { pathname } = request.nextUrl
@@ -98,9 +105,9 @@ export const createLocaleProxy = (
     const chosen = config.localeCookie
       ? request.cookies.get(config.localeCookie)?.value
       : undefined
-    const locale = app.isLocale(chosen)
-      ? chosen
-      : app.negotiate(request.headers.get('accept-language'))
+    const locale =
+      (app.isLocale(chosen) ? chosen : app.negotiate(request.headers.get('accept-language'))) ??
+      config.defaultLocale
 
     // The page Next renders after this carries Next's own `Vary`, whatever is
     // set here; only the redirect can say what it depended on.

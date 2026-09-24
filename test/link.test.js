@@ -115,3 +115,37 @@ test('puts the mount after the locale', () => {
     '<a href="/id/about">x</a>'
   )
 })
+
+import { Stylesheets } from '../dist/index.js'
+
+test('renders a link per stylesheet indicator, under the mount', () => {
+  const styled = createIndicators({
+    locales: ['en'],
+    defaultLocale: 'en',
+    segments: ['locale'],
+    prefs: { theme: { values: ['dark'], stylesheet: '/theme.css' } },
+    flags: { motion: { values: ['reduce'], stylesheet: '/css/motion.css' } },
+  })
+  assert.equal(
+    renderToStaticMarkup(createElement(Stylesheets, { indicators: styled, mount: '/id' })),
+    '<link rel="stylesheet" href="/id/css/motion.css" data-indicators-stylesheet="motion"/>' +
+      '<link rel="stylesheet" href="/id/theme.css" data-indicators-stylesheet="theme"/>'
+  )
+  assert.equal(renderToStaticMarkup(createElement(Stylesheets, { indicators })), '')
+})
+
+test('leaves hrefs alone and reports no locale for a site in one language', () => {
+  const single = createIndicators({ segments: [] })
+  const { Link, useLocale } = createNavigation(single, { mount: '/docs' })
+  assert.equal(
+    renderToStaticMarkup(createElement(Link, { href: '/about' }, 'x')),
+    '<a href="/docs/about">x</a>'
+  )
+  let seen = 'unset'
+  const Probe = () => {
+    seen = useLocale()
+    return null
+  }
+  renderToStaticMarkup(createElement(Probe))
+  assert.equal(seen, undefined)
+})
