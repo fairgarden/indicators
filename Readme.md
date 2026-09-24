@@ -68,10 +68,11 @@ export default indicators.layout(({ children, locale, prefs }) => (
 
 A chain of `beforeFiles` rewrites turns cookies and headers into sorted path
 segments; `generateStaticParams` lists the same segments, so every variant is
-prerendered and the browser's URL never changes. Language negotiation runs in
-a proxy at the site root and nowhere else, where a locale the user chose —
-remembered in a cookie by `Link` and `useSetLocale` — wins over the
-browser's list.
+prerendered and the browser's URL never changes. It is all routing
+configuration and static files: no inline script, no serverless function,
+and no middleware — except a proxy matched on the site root alone, where
+language negotiation runs and a locale the user chose, remembered in a
+cookie by `Link` and `useSetLocale`, wins over the browser's list.
 
 ## Documentation
 

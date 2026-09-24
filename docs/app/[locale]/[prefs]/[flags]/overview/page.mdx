@@ -62,6 +62,34 @@ preference; its preferences are then expressed through
 - Ship a `proxy.ts` from [`createLocaleProxy`](/functions/createLocaleProxy)
   if visitors arrive at the root without a locale.
 
+## What runs, and what does not
+
+Every step above is routing: `beforeFiles` rewrites, redirects and
+`headers` in `next.config.ts`, which the routing layer applies before any
+page code, plus static files in `public/`. So a page's variant is decided
+with:
+
+- **No inline script.** The theme is `data-theme` in the HTML the browser
+  receives and `color-scheme` in a stylesheet it loads before painting. A
+  script is never in the path to the first frame, so there is no frame in
+  the wrong state.
+- **No serverless function.** Every variant is prerendered, or rendered once
+  on its first request and static from then on. A stylesheet preference is a
+  static file the request is rewritten to. A hard flag's page is a static
+  page in another directory.
+- **No middleware**, with one exception: the proxy that negotiates the
+  locale at the site root, matched on `/` and nothing else. A site in one
+  language has no proxy at all. The Pages Router's `i18n` config did this
+  in the routing layer — `localeDetection` redirected the root by
+  `Accept-Language`, and a `NEXT_LOCALE` cookie overrode it, the same two
+  inputs in the same order — but the App Router does not support it, and
+  that is the proxy's only reason to exist. Nothing here stands in the way
+  of it coming back; if it does, the proxy goes and the rest is unchanged.
+
+Scripts do run *after* the page. `usePref` writes a cookie and refreshes, or
+fetches a stylesheet again, and what comes back is served the same way the
+page was.
+
 ## What it does not do
 
 It does not translate anything. The locale is a segment and a param; what an

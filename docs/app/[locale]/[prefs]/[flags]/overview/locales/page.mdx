@@ -32,6 +32,14 @@ The negotiation is small on purpose: ranges in order of weight, an exact
 match first, then the same language — `en-GB` finds `en-US` when that is all
 there is, and `en` finds it too — and `*` or no match means the default.
 
+This used to need no proxy. The Pages Router's `i18n` config, with
+`localeDetection` on, redirected the root by `Accept-Language` in the
+routing layer and let a `NEXT_LOCALE` cookie override it — the same two
+inputs, in the same order as here. The App Router dropped it, which is the
+only reason a proxy is involved. The rewrites already expect the locale in
+the path, so if the routing layer learns to put it there again, the proxy
+simply goes.
+
 ## A chosen locale
 
 A user who picked a locale should not be re-detected every time they land on

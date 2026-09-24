@@ -50,6 +50,12 @@ export default indicators.layout(({ children, locale, prefs }) => (
 ))
 ```
 
+All of that is routing configuration — rewrites, redirects and headers in
+`next.config.ts` — and static files. No inline script decides a theme, no
+function runs to serve a variant, and there is no middleware, with one
+exception: a proxy matched on the site root alone, for language
+negotiation, which a site in one language does not have either.
+
 ## Start here
 
 - [Overview](/overview) — what a request goes through
