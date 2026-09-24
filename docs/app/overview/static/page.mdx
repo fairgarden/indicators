@@ -33,23 +33,43 @@ export const generateStaticParams = indicators.flags.generateStaticParams
 
 Next runs them top down and multiplies them, which comes to the same thing.
 
-## The long tail
+## The hot path and the long tail
 
-Not every indicator has to multiply the build. A flag that lumps
-`Accept-Language` into a handful of names is worth prerendering; one with
-twenty values across three other indicators is not.
+Not every value has to be in the build. A company in New York serves the
+world, but nearly all of its visitors are in one timezone, so that is the
+one worth a prerendered copy of every page:
 
 ```ts
 flags: {
+  tz: {
+    header: 'x-vercel-ip-timezone',
+    values: {
+      EST: 'America/(New_York|Toronto|Detroit)',
+      PST: 'America/(Los_Angeles|Vancouver)',
+      CET: 'Europe/(Paris|Berlin|Madrid)',
+    },
+    prerender: ['EST'],
+  },
   lang: { header: 'accept-language', values: { fr: 'fr.*', de: 'de.*' }, prerender: false },
 }
 ```
 
-A value with `prerender: false` is left out of `generateStaticParams`, and
-nothing else changes: `dynamicParams` is on by default, so a variant that was
-not prerendered renders on its first request and is cached from then on.
-Turn `dynamicParams` off only if every variant really is listed; a request
-for any other would then be a 404.
+`prerender` names the values `generateStaticParams` includes: all of them
+by default, none with `false`, or a list. The build then holds the hot path
+— every page for `EST`, and for no timezone at all — and nothing for Paris.
+
+A visitor from Paris is still served. `dynamicParams` is on by default, so
+a variant that was not prerendered is rendered on its first request and
+cached from then on, exactly as a prerendered page is — incremental static
+regeneration, with the route's `revalidate` setting deciding how long it
+lives. The data behind the variant is shared with every other through the
+data cache, so what that first request pays for is a render, not a fetch.
+The second visitor from Paris gets a static page.
+
+Both kinds of variant are the same canonical segment, so a prerendered
+`tz~EST` and an on-demand `tz~CET` differ in nothing but when they were
+built. Turn `dynamicParams` off only if every variant really is listed; a
+request for any other would then be a 404.
 
 ## A route that switches on a flag
 

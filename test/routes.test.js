@@ -278,6 +278,15 @@ test('never serves a hard segment named in the public path', () => {
   assert.equal(serve('/labs/beta/login', { cookie: 'beta=secret-value' }), '404 /en/-/-/-/labs/beta/login')
 })
 
+test('refuses a hard flag named like a path that is never rewritten', () => {
+  const bare = normalizeConfig({ segments: [], exclude: ['docs'] })
+  const flags = normalizeHardFlags({ docs: { values: ['x'] } }, bare)
+  assert.throws(() => hardFlagRewrites(bare, flags), /never rewritten/)
+  const images = normalizeHardFlags({ images: { values: ['x'] } }, bare)
+  assert.throws(() => hardFlagRewrites(bare, images, { exclude: ['images'] }), /never rewritten/)
+  assert.doesNotThrow(() => hardFlagRewrites(bare, images))
+})
+
 test('does not quarantine a lookalike', () => {
   assert.equal(serve('/betamax/login'.replace('/login', '')), '404 /en/-/-/betamax')
   assert.equal(resolve(withHard, '/betamax'), '/en/-/-/betamax')

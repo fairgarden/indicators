@@ -3,7 +3,7 @@
  *
  * Three things go into the path, in this order: the locale, the preferences
  * and the flags. Locale is a segment of its own. Preferences and flags are
- * each one segment holding `key=value` pairs — see `segments.ts` for the
+ * each one segment holding `key~value` pairs — see `segments.ts` for the
  * encoding — and both are described the same way; they differ in where they
  * come from by default (a cookie for a preference, a header for a flag) and
  * in what they mean (a choice the user made, against a fact about the
@@ -45,12 +45,13 @@ export interface IndicatorDefinition {
   /** Read from this query parameter. */
   query?: string
   /**
-   * Whether `generateStaticParams` includes this indicator. Defaults to true.
-   * A variant that is not prerendered is still served — it renders on the
-   * first request and is cached from then on — so turn this off for the
-   * long tail rather than leaving a page out of the static build.
+   * Which of the values `generateStaticParams` prerenders: all of them
+   * (`true`, the default), none (`false`), or the names of the common ones.
+   * A variant left out is still served — Next renders it on its first
+   * request and caches it from then on — so a company in New York lists its
+   * own timezone here and lets the rest be rendered on demand.
    */
-  prerender?: boolean
+  prerender?: boolean | readonly string[]
   /**
    * How long a cookie written through `usePref` lives, in seconds. Defaults
    * to a year. Only meaningful for a cookie-backed indicator.
@@ -153,7 +154,8 @@ export interface NormalizedIndicator {
   kind: 'prefs' | 'flags'
   source: { type: SourceType; key: string }
   values: NormalizedValue[]
-  prerender: boolean
+  /** The names of the values `generateStaticParams` includes. */
+  prerender: string[]
   maxAge: number
 }
 
@@ -268,7 +270,7 @@ const normalizeSource = (
   const type: SourceType = sources[0] ?? fallback
   const sourceKey = definition[type] ?? key
   if (typeof sourceKey !== 'string' || sourceKey === '') {
-    throw new Error(`${kind}.${key} must be a non-empty string.`)
+    throw new Error(`${kind}.${key}.${type} must be a non-empty string.`)
   }
   // Headers are case-insensitive and Node lowercases them; Next reads the
   // `has` key lowercased too, so store it that way.
@@ -316,24 +318,42 @@ const normalizeIndicator = (
   key: string,
   definition: IndicatorDefinition
 ): NormalizedIndicator => {
-      if (!KEY.test(key)) {
-        throw new Error(
-          `${kind} key ${JSON.stringify(key)} cannot go in a path. Use letters, digits, ` +
-            '"_" and "-", starting with a letter or digit.'
-        )
-      }
-      if (!definition || typeof definition !== 'object') {
-        throw new Error(`${kind}.${key} must be an object with "values".`)
-      }
+  if (!KEY.test(key)) {
+    throw new Error(
+      `${kind} key ${JSON.stringify(key)} cannot go in a path. Use letters, digits, ` +
+        '"_" and "-", starting with a letter or digit.'
+    )
+  }
+  if (!definition || typeof definition !== 'object') {
+    throw new Error(`${kind}.${key} must be an object with "values".`)
+  }
 
-      return {
-        key,
-        kind,
-        source: normalizeSource(kind, key, definition, kind === 'prefs' ? 'cookie' : 'header'),
-        values: normalizeValues(kind, key, definition.values),
-        prerender: definition.prerender ?? true,
-        maxAge: definition.maxAge ?? ONE_YEAR,
+  const values = normalizeValues(kind, key, definition.values)
+  const wanted = definition.prerender ?? true
+  let prerender: string[]
+  if (wanted === true) {
+    prerender = values.map((value) => value.name)
+  } else if (wanted === false) {
+    prerender = []
+  } else if (Array.isArray(wanted)) {
+    for (const name of wanted) {
+      if (!values.some((value) => value.name === name)) {
+        throw new Error(`${kind}.${key}.prerender names ${JSON.stringify(name)}, which is not a value.`)
       }
+    }
+    prerender = values.filter((value) => wanted.includes(value.name)).map((value) => value.name)
+  } else {
+    throw new Error(`${kind}.${key}.prerender must be true, false or a list of values.`)
+  }
+
+  return {
+    key,
+    kind,
+    source: normalizeSource(kind, key, definition, kind === 'prefs' ? 'cookie' : 'header'),
+    values,
+    prerender,
+    maxAge: definition.maxAge ?? ONE_YEAR,
+  }
 }
 
 /**
@@ -462,6 +482,12 @@ export const normalizeConfig = (config: IndicatorsConfig): NormalizedConfig => {
       throw new Error(`Two indicators share the stylesheet ${sheet.href}; each needs its own.`)
     }
     seen.add(sheet.href)
+    // Its rewrites run before the locale steps, and a locale directory would
+    // then have the empty segments pushed into the file it was rewritten to.
+    const directory = sheet.href.split('/')[1] ?? ''
+    if (locales.includes(directory)) {
+      throw new Error(`${sheet.kind}.${sheet.key}.stylesheet is under /${directory}, which is a locale.`)
+    }
   }
 
   return {

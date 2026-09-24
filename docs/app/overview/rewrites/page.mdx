@@ -37,9 +37,10 @@ A path that starts with a locale gets no locale. A path that starts with
 `exclude`. The plugin also looks at the app:
 
 - every entry of `public/`, since a file there is served at its own name
-- every directory at the top of `app/` that is not a dynamic segment, such
-  as `app/api/` or a health check, since a route up there is outside the
-  locale tree by construction
+- when the routes sit under a segment, every directory at the top of `app/`
+  that is not one, such as `app/api/` or a health check, since a route up
+  there is outside the tree by construction; with `segments: []` those
+  directories are the routes and are left in
 - metadata files at the top of `app/` — `sitemap.ts`, `robots.ts`,
   `manifest.ts`, the icons — which Next serves under the same name with
   another extension

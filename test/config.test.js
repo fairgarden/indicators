@@ -22,7 +22,7 @@ test('reads a preference from a cookie of the same name, and a flag from a heade
   assert.deepEqual(config.prefs[0].source, { type: 'cookie', key: 'theme' })
   // Header names are case-insensitive, and Next reads them lowercased.
   assert.deepEqual(config.flags[0].source, { type: 'header', key: 'save-data' })
-  assert.equal(config.prefs[0].prerender, true)
+  assert.deepEqual(config.prefs[0].prerender, ['light', 'dark'])
   assert.equal(config.prefs[0].maxAge, 60 * 60 * 24 * 365)
 })
 
@@ -65,7 +65,7 @@ test('takes an explicit source and other options', () => {
   assert.equal(config.localeCookie, 'locale')
   assert.deepEqual(config.exclude, ['_next', 'api', '.well-known', 'oidc'])
   assert.deepEqual(config.flags[0].source, { type: 'cookie', key: 'beta' })
-  assert.equal(config.flags[0].prerender, false)
+  assert.deepEqual(config.flags[0].prerender, [])
   assert.equal(config.flags[0].maxAge, 60)
   assert.deepEqual(config.flags[1].source, { type: 'query', key: 'variant' })
 })
@@ -92,6 +92,23 @@ refuses('a value the path cannot hold', { ...base, prefs: { a: { values: ['x/y']
 refuses('a value holding a separator', { ...base, prefs: { a: { values: ['x.y'] } } }, /cannot go in a path/)
 refuses('a value Next would percent-encode', { ...base, prefs: { a: { values: ['New,York'] } } }, /cannot go in a path/)
 refuses('a value listed twice', { ...base, prefs: { a: { values: ['x', 'x'] } } }, /twice/)
+test('prerenders only the values it is told to', () => {
+  const config = normalizeConfig({
+    ...base,
+    flags: {
+      tz: {
+        header: 'x-vercel-ip-timezone',
+        values: { EST: 'America/New_York', PST: 'America/Los_Angeles', CET: 'Europe/.*' },
+        prerender: ['EST'],
+      },
+    },
+  })
+  assert.deepEqual(config.flags[0].prerender, ['EST'])
+  assert.equal(config.flags[0].values.length, 3)
+})
+
+refuses('a prerender list naming a value it does not have', { ...base, flags: { tz: { values: ['EST'], prerender: ['PST'] } } }, /not a value/)
+refuses('a prerender that is neither a boolean nor a list', { ...base, flags: { tz: { values: ['EST'], prerender: 'EST' } } }, /true, false or a list/)
 refuses('no values', { ...base, prefs: { a: { values: [] } } }, /at least one/)
 refuses('two sources', { ...base, prefs: { a: { cookie: 'a', header: 'a', values: ['x'] } } }, /more than one source/)
 refuses('an invalid pattern', { ...base, flags: { a: { values: { x: '(' } } } }, /not a valid regular expression/)
@@ -171,6 +188,7 @@ refuses('a flag in the path without its segment', { ...base, segments: ['locale'
 refuses('a stylesheet that is not a path', { ...base, prefs: { theme: { values: ['dark'], stylesheet: 'theme.css' } } }, /ending in \.css/)
 refuses('a stylesheet that is not a css file', { ...base, prefs: { theme: { values: ['dark'], stylesheet: '/theme' } } }, /ending in \.css/)
 refuses('a stylesheet with a query', { ...base, prefs: { theme: { values: ['dark'], stylesheet: '/theme.css?x' } } }, /ending in \.css/)
+refuses('a stylesheet under a locale directory', { ...base, prefs: { theme: { values: ['dark'], stylesheet: '/en/theme.css' } } }, /which is a locale/)
 refuses('two indicators on one stylesheet', { ...base, prefs: { a: { values: ['x'], stylesheet: '/t.css' }, b: { values: ['y'], stylesheet: '/t.css' } } }, /share the stylesheet/)
 
 // ---- a site in one language --------------------------------------------------

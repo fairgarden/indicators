@@ -94,18 +94,20 @@ export const decodeSegment = (
 }
 
 /**
- * Every segment `generateStaticParams` should produce: each prerendered
- * indicator either absent or at one of its values, in every combination. The
- * empty segment comes first, since it is the hot path.
+ * Every segment `generateStaticParams` should produce: each indicator either
+ * absent or at one of the values it prerenders, in every combination. The
+ * empty segment comes first, since it is the hot path. Every other
+ * combination is still served, rendered on its first request.
  */
 export const staticSegments = (indicators: NormalizedIndicator[]): string[] => {
   let combinations: Chosen[] = [{}]
 
   for (const indicator of indicators) {
-    if (!indicator.prerender) continue
+    const names = indicator.prerender
+    if (names.length === 0) continue
     combinations = combinations.flatMap((chosen) => [
       chosen,
-      ...indicator.values.map((value) => ({ ...chosen, [indicator.key]: value.name })),
+      ...names.map((name) => ({ ...chosen, [indicator.key]: name })),
     ])
   }
 

@@ -144,14 +144,20 @@ const entriesOf = (dir: string): Array<{ name: string; directory: boolean }> => 
 }
 
 /**
- * Paths a look at the app says must never be localized.
+ * Paths a look at the app says must never be rewritten.
  *
- * Everything in `public/` is served at its own name. So is every route at the
- * top of `app/` that is not a dynamic segment: an `api/` directory, a health
- * check, a metadata file. A route group or a parallel slot could hold
- * anything, so those are left to the config's `exclude`.
+ * Everything in `public/` is served at its own name, and so is a metadata
+ * file at the top of `app/`. When the routes live under a segment, so is
+ * every directory at the top of `app/` that is not one: an `api/`
+ * directory, a health check. Without a segment those directories are the
+ * routes themselves, so they are left in. A route group or a parallel slot
+ * could hold anything, so those are left to the config's `exclude`.
  */
-export const detectExclusions = (root: string): Required<RewriteOptions> => {
+export const detectExclusions = (
+  root: string,
+  /** Whether the routes sit under an indicator segment. */
+  underSegment = true
+): Required<RewriteOptions> => {
   const exclude: string[] = []
   const excludeStems: string[] = []
 
@@ -169,7 +175,7 @@ export const detectExclusions = (root: string): Required<RewriteOptions> => {
     if (entry.name.startsWith('_') || entry.name.startsWith('.')) continue
 
     if (entry.directory) {
-      exclude.push(entry.name)
+      if (underSegment) exclude.push(entry.name)
       continue
     }
 
@@ -234,7 +240,9 @@ export const withFairGardenIndicators = <C extends IndicatorsConfig>(
 ): NextConfig => {
   const root = options.root ?? callerDirectory() ?? process.cwd()
   const detected: RewriteOptions =
-    options.detectExclusions === false ? {} : detectExclusions(root)
+    options.detectExclusions === false
+      ? {}
+      : detectExclusions(root, indicators.config.segments.length > 0)
   const hard = hardFlagRewrites(
     indicators.config,
     normalizeHardFlags(options.hardFlags, indicators.config),

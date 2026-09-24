@@ -325,6 +325,18 @@ export const hardFlagRewrites = (
 ): HardFlagRewrites => {
   if (hardFlags.length === 0) return { beforeFiles: [], fallback: [] }
 
+  // A name that is also a path left alone — a file in `public/`, an
+  // excluded route — could not be quarantined without breaking that path.
+  const reserved = new Set([...config.exclude, ...(options.exclude ?? [])])
+  for (const flag of hardFlags) {
+    if (reserved.has(flag.key)) {
+      throw new Error(
+        `hardFlags key ${JSON.stringify(flag.key)} is also a path that is never rewritten ` +
+          '(excluded, or in public/); a hard flag needs a name of its own.'
+      )
+    }
+  }
+
   const base = segmentPath(config, options)
   const has = (flag: NormalizedHardFlag): Has[] => [
     { type: flag.source.type, key: flag.source.key, value: `(?:${flag.patterns.join('|')})` },

@@ -41,6 +41,12 @@ test('finds the paths an app serves outside the locale tree', () => {
   assert.deepEqual(found.excludeStems.sort(), ['favicon', 'opengraph-image', 'sitemap'])
 })
 
+test('keeps top-level route directories when the routes are not under a segment', () => {
+  const found = detectExclusions(fixture(), false)
+  assert.deepEqual(found.exclude.sort(), ['fonts', 'next.svg'])
+  assert.deepEqual(found.excludeStems.sort(), ['favicon', 'opengraph-image', 'sitemap'])
+})
+
 test('looks under src/app when app/ is not there', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'indicators-'))
   mkdirSync(path.join(root, 'src', 'app', 'health'), { recursive: true })

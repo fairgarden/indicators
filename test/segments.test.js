@@ -88,3 +88,17 @@ test('lists every combination of the prerendered values, the empty one first', (
 test('has one segment when nothing is declared', () => {
   assert.deepEqual(staticSegments([]), ['-'])
 })
+
+test('prerenders the common values and leaves the rest to the first request', () => {
+  const { flags } = normalizeConfig({
+    locales: ['en'],
+    defaultLocale: 'en',
+    flags: {
+      tz: { header: 'x', values: ['EST', 'PST', 'CET'], prerender: ['EST'] },
+      lang: { header: 'y', values: ['fr', 'de'], prerender: false },
+    },
+  })
+  assert.deepEqual(staticSegments(flags), ['-', 'tz~EST'])
+  // Not prerendered, but still canonical, so still served.
+  assert.deepEqual(decodeSegment(flags, 'lang~de.tz~CET'), { lang: 'de', tz: 'CET' })
+})

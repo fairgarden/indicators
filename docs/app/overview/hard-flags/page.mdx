@@ -73,6 +73,10 @@ whatever a public path starts with lands exactly where a hard segment goes:
 left alone, a request for `/beta/login` would become `/en/-/-/beta/login`
 and be served the beta page with no cookie at all.
 
+A hard flag also cannot take the name of a path that is never rewritten — a
+file or directory in `public/`, an excluded route — since quarantining it
+would break that path; the plugin refuses such a name.
+
 So before any segment is injected, a public path whose first segment names
 a hard flag is quarantined — an empty segment is pushed in front of it, and
 `/en/-/-/-/beta/login` matches nothing. That holds with the cookie as well

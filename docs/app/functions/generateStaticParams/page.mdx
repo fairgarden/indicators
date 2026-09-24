@@ -29,6 +29,8 @@ every combination, sorted so the empty segment comes first:
 [{ prefs: '-' }, { prefs: 'tz~EST' }, { prefs: 'theme~light' }, { prefs: 'theme~light.tz~EST' }, …]
 ```
 
-An indicator with `prerender: false` is left out entirely; its variants
-render on demand. An app that wants a different set writes its own function
-and uses [`encode`](/functions/encode) to spell the segments.
+An indicator's `prerender` decides which of its values are listed — all,
+none, or the common ones — and whatever is left out renders on demand and
+is cached; see [Static generation](/overview/static). An app that wants a
+different set still writes its own function and uses
+[`encode`](/functions/encode) to spell the segments.

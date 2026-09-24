@@ -36,8 +36,12 @@ indicatorsRedirects(config, options?): Redirect[]
 And from `@fairgarden/indicators/withFairGardenIndicators`:
 
 ```ts
-detectExclusions(root): { exclude: string[]; excludeStems: string[] }
+detectExclusions(root, underSegment = true): { exclude: string[]; excludeStems: string[] }
 ```
+
+`underSegment` is whether the routes sit under an indicator segment; the
+plugin passes `false` for a tree with `segments: []`, whose top-level
+directories are the routes rather than paths outside the tree.
 
 What [`withFairGardenIndicators`](/functions/withFairGardenIndicators)
 puts into the config, as data: the [chain](/overview/rewrites) and the
