@@ -131,3 +131,18 @@ test('puts nothing in env', () => {
   const config = withFairGardenIndicators({}, indicators, { root: fixture() })
   assert.equal(config.env, undefined)
 })
+
+test('adds hard flag rewrites after the chain, and their strips to fallback', async () => {
+  const config = withFairGardenIndicators(
+    { rewrites: async () => ({ fallback: [{ source: '/x', destination: '/y' }] }) },
+    indicators,
+    { root: fixture(), hardFlags: { beta: { values: ['secret'] } } }
+  )
+  const rewrites = await config.rewrites()
+  assert.equal(rewrites.beforeFiles.length, 6 + 2)
+  assert.match(rewrites.beforeFiles.at(-2).source, /:hard\(beta\)/)
+  assert.deepEqual(rewrites.beforeFiles.at(-1).has, [{ type: 'cookie', key: 'beta', value: '(?:secret)' }])
+  assert.deepEqual(rewrites.fallback[0], { source: '/x', destination: '/y' })
+  assert.equal(rewrites.fallback.length, 2)
+  assert.match(rewrites.fallback[1].source, /\/beta\/:path\*$/)
+})

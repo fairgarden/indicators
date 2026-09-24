@@ -1,0 +1,79 @@
+# Hard flags
+
+A hard flag gates a whole route tree. When its cookie or header matches, a
+segment named after it is injected after the flags segment, and Next serves
+whatever sits under that directory:
+
+```
+app/[locale]/[prefs]/[flags]/login/page.tsx          everyone
+app/[locale]/[prefs]/[flags]/beta/login/page.tsx     the beta cohort
+```
+
+```ts
+// next.config.ts
+export default withFairGardenIndicators(nextConfig, indicators, {
+  hardFlags: {
+    // read from the `beta` cookie, by default
+    beta: { values: [process.env.BETA_COOKIE ?? ''] },
+  },
+})
+```
+
+`/login` with a `beta` cookie holding that value is rewritten to
+`/en/-/-/beta/login`. The beta tree sits under the same layouts as everything
+else, so it inherits the root layout at the flags level, and it is
+prerendered like any other page: `generateStaticParams` already covers the
+three segments above it, and the segment itself is a literal.
+
+## Why not a flag
+
+A flag `beta` would put `beta~on` into the flags segment, and switching
+routes on it means a directory named for that exact segment beside
+`[flags]` — one combination, its own root layout, as
+[Static generation](/overview/static) describes. A hard flag is a segment
+of its own: it composes with any preferences and flags, lives under the
+shared layouts, and its value never leaves the server.
+
+## Where the value lives
+
+The config `createIndicators` takes is bundled for the browser, through the
+client module that builds `Link`. A value that gates a route is a secret, so
+it does not go there. Hard flags are given to the plugin instead, and their
+patterns exist only in the rewrites — the routes manifest Next builds, which
+no browser sees. Read the value from the environment, as above.
+
+`values` works as it does for an indicator: literals, or patterns matched
+against the whole cookie or header; any match switches the flag on.
+
+## Pages without a version
+
+A beta user asking for a page that has no beta version — `/about`, when only
+`beta/login` exists — is rewritten to `/en/-/-/beta/about`, which matches no
+route. A `fallback` rewrite then strips the segment and Next checks again,
+and `/en/-/-/about` is served. Nothing has to be duplicated.
+
+It has to be `fallback`. `afterFiles` runs before dynamic routes are
+matched, and every route here is dynamic, so it would strip the segment from
+every request and the beta tree would never be reached.
+
+With several hard flags, segments are injected in sorted order and stripped
+last first: `/beta/labs/login` falls back to `/beta/login`, then `/login`. A
+page that exists only under `labs` is not found for a user who also has
+`beta`. Keep to one hard flag where you can, or nest the trees.
+
+## What a visitor cannot do
+
+The rewrites put the two empty segments straight after the locale, so
+whatever a public path starts with lands exactly where a hard segment goes:
+left alone, a request for `/beta/login` would become `/en/-/-/beta/login`
+and be served the beta page with no cookie at all.
+
+So before any segment is injected, a public path whose first segment names
+a hard flag is quarantined — an empty segment is pushed in front of it, and
+`/en/-/-/-/beta/login` matches nothing. That holds with the cookie as well
+as without, and for every locale. Two consequences: a hard flag's name is
+not available as a public route, and public URLs never carry it. `Link`
+never adds one, and there is nothing to read from the params; a page knows
+it is the beta one by where it is. A layout shared by both trees that needs
+to know can read `useSelectedLayoutSegments` on the client, or keep what
+only the beta tree needs in a layout inside `beta/`.

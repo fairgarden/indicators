@@ -1,4 +1,9 @@
-import { escapeRegExp, type NormalizedConfig, type NormalizedIndicator } from './config.ts'
+import {
+  escapeRegExp,
+  type NormalizedConfig,
+  type NormalizedHardFlag,
+  type NormalizedIndicator,
+} from './config.ts'
 import { EMPTY_SEGMENT, PAIR_SEPARATOR, VALUE_SEPARATOR } from './segments.ts'
 
 /**
@@ -159,6 +164,83 @@ export const indicatorsRewrites = (
   ...indicatorRewrites(config, 'prefs'),
   ...indicatorRewrites(config, 'flags'),
 ]
+
+export interface HardFlagRewrites {
+  /** After the chain: quarantine, then one injection per flag. */
+  beforeFiles: Rewrite[]
+  /** One strip per flag, for a path that has no version under it. */
+  fallback: Rewrite[]
+}
+
+/**
+ * The rewrites for hard flags — see `HardFlagDefinition`.
+ *
+ * Three parts, and the first is the one that matters for safety. The chain
+ * puts the two empty segments straight after the locale, so whatever a
+ * public path starts with lands exactly where a hard segment goes: a
+ * request for `/beta/login` would otherwise become `/en/-/-/beta/login` and
+ * be served the beta page with no cookie at all. So a path whose first
+ * segment names a hard flag is quarantined first, by pushing an empty
+ * segment in front of it, where it matches nothing. Only then does each
+ * flag whose cookie or header matches inject its segment, straight after
+ * the flags; visiting the flags in reverse order leaves the segments sorted.
+ *
+ * The strips go in `fallback`, which Next applies only once no route
+ * matched, checking again after each: a beta user asking for a page with no
+ * beta version gets the ordinary one. Not `afterFiles`, which runs before
+ * dynamic routes are matched and would strip the segment from everything.
+ * Flags are stripped last first, so with several hard flags a page that
+ * exists only under a later one is not found for a user who also has an
+ * earlier one.
+ *
+ * A strip has to allow for the earlier segments being there or not. In a
+ * source that is `:h0(beta)?`; in a destination it is `:h0*`, because Next
+ * reads a destination as a URL before compiling it and a `?` there starts
+ * the query string.
+ */
+export const hardFlagRewrites = (
+  config: NormalizedConfig,
+  hardFlags: NormalizedHardFlag[]
+): HardFlagRewrites => {
+  if (hardFlags.length === 0) return { beforeFiles: [], fallback: [] }
+
+  const base = `/${localeParam(config)}/:prefs/:flags`
+
+  const quarantine: Rewrite = {
+    source: `${base}/:hard(${alternation(hardFlags.map((flag) => flag.key))})/:path*`,
+    destination: `/:locale/:prefs/:flags/${EMPTY_SEGMENT}/:hard/:path*`,
+  }
+
+  const inject = [...hardFlags].reverse().map(
+    (flag): Rewrite => ({
+      source: `${base}/:path*`,
+      has: [
+        {
+          type: flag.source.type,
+          key: flag.source.key,
+          value: `(?:${flag.patterns.join('|')})`,
+        },
+      ],
+      destination: `/:locale/:prefs/:flags/${flag.key}/:path*`,
+    })
+  )
+
+  const fallback = hardFlags
+    .map((flag, index): Rewrite => {
+      const before = hardFlags.slice(0, index)
+      return {
+        source: `${base}${before
+          .map((earlier, at) => `/:h${at}(${escapeRegExp(earlier.key)})?`)
+          .join('')}/${flag.key}/:path*`,
+        destination: `/:locale/:prefs/:flags${before
+          .map((_, at) => `/:h${at}*`)
+          .join('')}/:path*`,
+      }
+    })
+    .reverse()
+
+  return { beforeFiles: [quarantine, ...inject], fallback }
+}
 
 /**
  * Canonical URLs for the default locale.

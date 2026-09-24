@@ -1,9 +1,15 @@
 import { readdirSync } from 'node:fs'
 import path from 'node:path'
 import type { NextConfig } from 'next'
-import type { IndicatorsConfig } from './config.ts'
+import { normalizeHardFlags, type HardFlags, type IndicatorsConfig } from './config.ts'
 import type { Indicators } from './indicators.ts'
-import { indicatorsRedirects, indicatorsRewrites, type Rewrite, type RewriteOptions } from './routes.ts'
+import {
+  hardFlagRewrites,
+  indicatorsRedirects,
+  indicatorsRewrites,
+  type Rewrite,
+  type RewriteOptions,
+} from './routes.ts'
 
 export interface PluginOptions {
   /**
@@ -18,6 +24,23 @@ export interface PluginOptions {
    * the config instead.
    */
   detectExclusions?: boolean
+  /**
+   * Flags that become a route segment after `[flags]` when a cookie or
+   * header matches, gating a whole route tree:
+   *
+   * ```ts
+   * withFairGardenIndicators(nextConfig, indicators, {
+   *   hardFlags: { beta: { values: [process.env.BETA_COOKIE ?? ''] } },
+   * })
+   * ```
+   *
+   * `app/[locale]/[prefs]/[flags]/beta/login/page.tsx` is then served for
+   * `/login` when the `beta` cookie holds that value, and `/login` is
+   * served for everyone else — as it is for a beta user on a page with no
+   * beta version. A public path starting with `/beta` is never served.
+   * Here rather than in the config so the value stays out of the browser.
+   */
+  hardFlags?: HardFlags
 }
 
 type Phases = { beforeFiles: Rewrite[]; afterFiles: Rewrite[]; fallback: Rewrite[] }
@@ -174,6 +197,10 @@ export const withFairGardenIndicators = <C extends IndicatorsConfig>(
   const root = options.root ?? callerDirectory() ?? process.cwd()
   const detected: RewriteOptions =
     options.detectExclusions === false ? {} : detectExclusions(root)
+  const hard = hardFlagRewrites(
+    indicators.config,
+    normalizeHardFlags(options.hardFlags, indicators.config)
+  )
 
   return {
     ...nextConfig,
@@ -181,7 +208,12 @@ export const withFairGardenIndicators = <C extends IndicatorsConfig>(
       const own = toPhases(await call(nextConfig.rewrites))
       return {
         ...own,
-        beforeFiles: [...own.beforeFiles, ...indicatorsRewrites(indicators.config, detected)],
+        beforeFiles: [
+          ...own.beforeFiles,
+          ...indicatorsRewrites(indicators.config, detected),
+          ...hard.beforeFiles,
+        ],
+        fallback: [...own.fallback, ...hard.fallback],
       }
     },
     redirects: async () => [

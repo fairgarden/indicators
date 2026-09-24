@@ -65,3 +65,8 @@ asks for French sees it without the page ever reading a header.
 The source is a default, not a rule. A feature flag reads from a cookie, and
 `flags: { beta: { cookie: 'beta', values: ['on'] } }` says so. What decides
 the kind is the meaning, because that is what a page does with it.
+
+A flag that *gates* something — a cohort let into a beta by a value they
+were given — is a [hard flag](/overview/hard-flags), declared in
+`next.config.ts` so the value stays on the server, and it switches routes
+rather than variants.

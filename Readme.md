@@ -86,6 +86,7 @@ pnpm --filter @fairgarden/indicators-docs dev
 - **Paths** — the segments, and why they are the cache key
 - **Rewrites** — how a cookie becomes a path segment
 - **Static generation** — prerendering every variant, and routes that switch on a flag
+- **Hard flags** — a route tree gated by a cookie, with the value kept on the server
 - **Locales** — detection at the root, and nowhere else
 - **Layouts** — where the root layout goes, and what each level reads
 - **In a monolith** — mounting an app that uses this

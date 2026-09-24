@@ -53,8 +53,11 @@ for any other would then be a 404.
 
 ## A route that switches on a flag
 
-A flags segment is a literal string, and Next prefers a literal route
-segment to a dynamic one. So this is a page of its own:
+The way to gate a route tree is a [hard flag](/overview/hard-flags), which
+becomes a segment of its own after `[flags]` and keeps its value on the
+server. A flag in the flags segment can switch routes too, with the caveats
+below, because a flags segment is a literal string and Next prefers a
+literal route segment to a dynamic one. So this is a page of its own:
 
 ```
 app/[locale]/[prefs]/[flags]/login/page.tsx       the usual login page

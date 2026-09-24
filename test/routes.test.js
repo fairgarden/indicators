@@ -185,3 +185,100 @@ test('redirects unprefixed paths to the default locale when it is always', () =>
   assert.ok(!match('/next.svg'))
   assert.ok(!match('/'))
 })
+
+// ---- hard flags -----------------------------------------------------------
+
+import { normalizeHardFlags } from '../dist/config.js'
+import { hardFlagRewrites } from '../dist/routes.js'
+
+const hard = hardFlagRewrites(
+  config,
+  normalizeHardFlags(
+    {
+      labs: { values: { on: 'on|yes' } },
+      beta: { values: ['secret-value'] },
+    },
+    config
+  )
+)
+const withHard = [...rewrites, ...hard.beforeFiles]
+
+/** The app's routes: home and login for everyone, a beta login. */
+const exists = (pathname) =>
+  [
+    /^\/(en|fr)\/[^/]+\/[^/]+$/,
+    /^\/(en|fr)\/[^/]+\/[^/]+\/login$/,
+    /^\/(en|fr)\/[^/]+\/[^/]+\/beta\/login$/,
+  ].some((route) => route.test(pathname))
+
+/** The chain, then — only when nothing matched — each fallback strip, checking after each. */
+const serve = (pathname, headers = {}) => {
+  let current = resolve(withHard, pathname, headers)
+  if (exists(current)) return current
+  for (const rewrite of hard.fallback) {
+    const params = getPathMatch(rewrite.source, { strict: true, removeUnnamedParams: true })(current)
+    if (!params) continue
+    const { parsedDestination } = prepareDestination({
+      appendParamsToQuery: true,
+      destination: rewrite.destination,
+      params,
+      query: {},
+    })
+    assert.deepEqual(parsedDestination.query, {})
+    current = parsedDestination.pathname
+    if (exists(current)) return current
+  }
+  return `404 ${current}`
+}
+
+test('hard flag routes are ones Next accepts', () => {
+  checkCustomRoutes(hard.beforeFiles, 'rewrite')
+  checkCustomRoutes(hard.fallback, 'rewrite')
+  assert.equal(hard.beforeFiles.length, 1 + 2)
+  assert.equal(hard.fallback.length, 2)
+  assert.deepEqual(hardFlagRewrites(config, []), { beforeFiles: [], fallback: [] })
+})
+
+test('injects a hard segment after the flags when the cookie matches in full', () => {
+  assert.equal(serve('/login'), '/en/-/-/login')
+  assert.equal(serve('/login', { cookie: 'beta=secret-value' }), '/en/-/-/beta/login')
+  assert.equal(serve('/login', { cookie: 'beta=wrong' }), '/en/-/-/login')
+  assert.equal(serve('/login', { cookie: 'beta=secret-value-2' }), '/en/-/-/login')
+  assert.equal(serve('/fr/login', { cookie: 'beta=secret-value' }), '/fr/-/-/beta/login')
+})
+
+test('keeps preferences and flags alongside a hard flag', () => {
+  assert.equal(
+    serve('/login', { cookie: 'beta=secret-value; theme=dark', 'x-vercel-ip-timezone': 'America/Toronto' }),
+    '/en/theme~dark/tz~EST/beta/login'
+  )
+})
+
+test('strips a hard segment again for a page that has no version under it', () => {
+  assert.equal(serve('/', { cookie: 'beta=secret-value' }), '/en/-/-')
+  assert.equal(serve('/login', { cookie: 'labs=yes' }), '/en/-/-/login')
+})
+
+test('injects several hard flags in sorted order and strips the last first', () => {
+  assert.equal(
+    resolve(withHard, '/login', { cookie: 'labs=on; beta=secret-value' }),
+    '/en/-/-/beta/labs/login'
+  )
+  assert.equal(serve('/login', { cookie: 'labs=on; beta=secret-value' }), '/en/-/-/beta/login')
+})
+
+test('never serves a hard segment named in the public path', () => {
+  assert.equal(serve('/beta/login'), '404 /en/-/-/-/beta/login')
+  assert.equal(serve('/beta'), '404 /en/-/-/-/beta')
+  // With the cookie the segment is injected in front of the quarantined
+  // one, matches nothing, and the fallback takes it off again: still a 404.
+  assert.equal(resolve(withHard, '/beta/login', { cookie: 'beta=secret-value' }), '/en/-/-/beta/-/beta/login')
+  assert.equal(serve('/beta/login', { cookie: 'beta=secret-value' }), '404 /en/-/-/-/beta/login')
+  assert.equal(serve('/fr/beta/login', { cookie: 'beta=secret-value' }), '404 /fr/-/-/-/beta/login')
+  assert.equal(serve('/labs/beta/login', { cookie: 'beta=secret-value' }), '404 /en/-/-/-/labs/beta/login')
+})
+
+test('does not quarantine a lookalike', () => {
+  assert.equal(serve('/betamax/login'.replace('/login', '')), '404 /en/-/-/betamax')
+  assert.equal(resolve(withHard, '/betamax'), '/en/-/-/betamax')
+})

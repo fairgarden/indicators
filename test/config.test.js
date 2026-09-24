@@ -97,3 +97,32 @@ refuses('two sources', { ...base, prefs: { a: { cookie: 'a', header: 'a', values
 refuses('an invalid pattern', { ...base, flags: { a: { values: { x: '(' } } } }, /not a valid regular expression/)
 refuses('an excluded path with a slash', { ...base, exclude: ['a/b'] }, /single path segment/)
 refuses('excluding a locale', { ...base, exclude: ['fr'] }, /both a locale and excluded/)
+
+// ---- hard flags -----------------------------------------------------------
+
+import { normalizeHardFlags } from '../dist/config.js'
+
+const normalized = normalizeConfig({ locales: ['en', 'fr'], defaultLocale: 'en' })
+
+test('reads a hard flag from a cookie of the same name, sorted by key', () => {
+  const flags = normalizeHardFlags(
+    { labs: { values: ['on'] }, beta: { header: 'X-Beta', values: { any: 'secret-.*' } } },
+    normalized
+  )
+  assert.deepEqual(flags, [
+    { key: 'beta', source: { type: 'header', key: 'x-beta' }, patterns: ['secret-.*'] },
+    { key: 'labs', source: { type: 'cookie', key: 'labs' }, patterns: ['on'] },
+  ])
+  assert.deepEqual(normalizeHardFlags(undefined, normalized), [])
+})
+
+const refusesHard = (name, definitions, pattern) =>
+  test(`refuses a hard flag with ${name}`, () => {
+    assert.throws(() => normalizeHardFlags(definitions, normalized), pattern)
+  })
+
+refusesHard('a name that is not a segment', { 'a.b': { values: ['x'] } }, /route segment/)
+refusesHard('a locale for a name', { fr: { values: ['x'] } }, /also a locale/)
+refusesHard('two sources', { beta: { cookie: 'a', query: 'b', values: ['x'] } }, /more than one source/)
+refusesHard('no values', { beta: { values: [] } }, /at least one/)
+refusesHard('a bad pattern', { beta: { values: { x: '(' } } }, /not a valid regular expression/)

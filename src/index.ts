@@ -1,14 +1,17 @@
 export type {
   Definitions,
+  HardFlagDefinition,
+  HardFlags,
   IndicatorDefinition,
   IndicatorsConfig,
   NormalizedConfig,
+  NormalizedHardFlag,
   NormalizedIndicator,
   NormalizedValue,
   SourceType,
   Values,
 } from './config.ts'
-export { ALWAYS_EXCLUDED } from './config.ts'
+export { ALWAYS_EXCLUDED, normalizeHardFlags } from './config.ts'
 
 export type { Href } from './hrefs.ts'
 export { localizeHref, localizePath, mountHref } from './hrefs.ts'
@@ -34,5 +37,5 @@ export { negotiateLocale, parseAcceptLanguage } from './negotiate.ts'
 
 export { EMPTY_SEGMENT } from './segments.ts'
 
-export type { Has, Redirect, Rewrite, RewriteOptions } from './routes.ts'
-export { indicatorsRedirects, indicatorsRewrites } from './routes.ts'
+export type { HardFlagRewrites, Has, Redirect, Rewrite, RewriteOptions } from './routes.ts'
+export { hardFlagRewrites, indicatorsRedirects, indicatorsRewrites } from './routes.ts'

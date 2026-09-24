@@ -75,6 +75,37 @@ export interface IndicatorsConfig {
 
 export type SourceType = 'cookie' | 'header' | 'query'
 
+/**
+ * A flag that becomes a route segment of its own, after the flags segment,
+ * when its cookie or header matches: `/en/-/-/beta/login`, served by
+ * `app/[locale]/[prefs]/[flags]/beta/login/page.tsx`.
+ *
+ * Given to `withFairGardenIndicators` rather than `createIndicators`,
+ * because the app's indicators module is bundled for the browser and a
+ * value that gates a route is usually a secret. The matching happens in the
+ * rewrites, which only the server sees.
+ */
+export interface HardFlagDefinition {
+  /** Raw values that switch the flag on: literals, or patterns matched in full. */
+  values: Values
+  /** Read from this cookie. The default, named after the flag. */
+  cookie?: string
+  /** Read from this header. */
+  header?: string
+  /** Read from this query parameter. */
+  query?: string
+}
+
+export type HardFlags = Readonly<Record<string, HardFlagDefinition>>
+
+export interface NormalizedHardFlag {
+  /** The route segment, which is also the name. */
+  key: string
+  source: { type: SourceType; key: string }
+  /** Regular expressions the raw value has to match in full; any will do. */
+  patterns: string[]
+}
+
 export interface NormalizedValue {
   /** What appears in the path. */
   name: string
@@ -161,6 +192,29 @@ const normalizeValues = (kind: string, key: string, values: Values): NormalizedV
   })
 }
 
+/** A hard flag's source, with the same rules as an indicator's. */
+const normalizeSource = (
+  kind: string,
+  key: string,
+  definition: { cookie?: string; header?: string; query?: string },
+  fallback: SourceType
+): { type: SourceType; key: string } => {
+  const sources = (['cookie', 'header', 'query'] as const).filter(
+    (type) => definition[type] !== undefined
+  )
+  if (sources.length > 1) {
+    throw new Error(`${kind}.${key} names more than one source (${sources.join(', ')}); pick one.`)
+  }
+  const type: SourceType = sources[0] ?? fallback
+  const sourceKey = definition[type] ?? key
+  if (typeof sourceKey !== 'string' || sourceKey === '') {
+    throw new Error(`${kind}.${key} must be a non-empty string.`)
+  }
+  // Headers are case-insensitive and Node lowercases them; Next reads the
+  // `has` key lowercased too, so store it that way.
+  return { type, key: type === 'header' ? sourceKey.toLowerCase() : sourceKey }
+}
+
 const normalizeIndicators = (
   kind: 'prefs' | 'flags',
   definitions: Definitions | undefined
@@ -177,29 +231,46 @@ const normalizeIndicators = (
         throw new Error(`${kind}.${key} must be an object with "values".`)
       }
 
-      const sources = (['cookie', 'header', 'query'] as const).filter(
-        (type) => definition[type] !== undefined
-      )
-      if (sources.length > 1) {
-        throw new Error(
-          `${kind}.${key} names more than one source (${sources.join(', ')}); pick one.`
-        )
-      }
-      const type: SourceType = sources[0] ?? (kind === 'prefs' ? 'cookie' : 'header')
-      const sourceKey = definition[type] ?? key
-      if (typeof sourceKey !== 'string' || sourceKey === '') {
-        throw new Error(`${kind}.${key}.${type} must be a non-empty string.`)
-      }
-
       return {
         key,
         kind,
-        // Headers are case-insensitive and Node lowercases them; Next reads the
-        // `has` key lowercased too, so store it that way.
-        source: { type, key: type === 'header' ? sourceKey.toLowerCase() : sourceKey },
+        source: normalizeSource(kind, key, definition, kind === 'prefs' ? 'cookie' : 'header'),
         values: normalizeValues(kind, key, definition.values),
         prerender: definition.prerender ?? true,
         maxAge: definition.maxAge ?? ONE_YEAR,
+      }
+    })
+    .sort((a, b) => compareKeys(a.key, b.key))
+
+/**
+ * Check the hard flags given to the plugin. A name is a route segment, so
+ * it follows the rules of a key, and it must not be a locale, which is what
+ * the segment before it holds.
+ */
+export const normalizeHardFlags = (
+  definitions: HardFlags | undefined,
+  config: NormalizedConfig
+): NormalizedHardFlag[] =>
+  Object.entries(definitions ?? {})
+    .map(([key, definition]): NormalizedHardFlag => {
+      if (!KEY.test(key)) {
+        throw new Error(
+          `hardFlags key ${JSON.stringify(key)} cannot be a route segment. Use letters, digits, ` +
+            '"_" and "-", starting with a letter or digit.'
+        )
+      }
+      if (config.locales.includes(key)) {
+        throw new Error(`hardFlags key ${JSON.stringify(key)} is also a locale.`)
+      }
+      if (!definition || typeof definition !== 'object') {
+        throw new Error(`hardFlags.${key} must be an object with "values".`)
+      }
+      return {
+        key,
+        source: normalizeSource('hardFlags', key, definition, 'cookie'),
+        patterns: normalizeValues('hardFlags', key, definition.values).map(
+          (value) => value.pattern
+        ),
       }
     })
     .sort((a, b) => compareKeys(a.key, b.key))

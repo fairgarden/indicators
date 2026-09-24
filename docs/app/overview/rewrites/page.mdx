@@ -66,6 +66,15 @@ page. With `'always'`, an unprefixed path redirects, temporarily, to the
 default locale. The site root is never redirected by config in either mode;
 that is the [proxy's](/overview/locales) call.
 
+## Hard flags
+
+[Hard flags](/overview/hard-flags) add three kinds of step. After the
+chain, still in `beforeFiles`: a public path whose first segment names a
+hard flag is quarantined behind an empty segment, then each flag whose
+cookie or header matches injects its segment after the flags. And in
+`fallback`, applied only once no route matched: one strip per flag, so a
+page with no version under the segment is served without it.
+
 ## Order
 
 The app's own `beforeFiles` rewrites come first and its redirects come

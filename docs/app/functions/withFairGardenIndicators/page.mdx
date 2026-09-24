@@ -36,10 +36,30 @@ as Next does.
 | --- | --- | --- |
 | `root` | the directory of the calling `next.config` | where to look for `public/` and `app/` |
 | `detectExclusions` | `true` | look at the app for paths to leave alone |
+| `hardFlags` | `{}` | route trees gated by a cookie or header. See [Hard flags](/overview/hard-flags) |
 
 `root` defaults to the config file's directory rather than the working
 directory, because a monolith loads an app's config from the monolith's own
 directory and would otherwise inspect the wrong app.
+
+## Hard flags
+
+```ts
+withFairGardenIndicators(nextConfig, indicators, {
+  hardFlags: {
+    beta: { values: [process.env.BETA_COOKIE ?? ''] },
+    preview: { header: 'x-preview', values: { any: 'pv-.*' } },
+  },
+})
+```
+
+Each key is a route segment injected after `[flags]` when its source
+matches, and a name for a directory under `app/[locale]/[prefs]/[flags]/`.
+`cookie`, `header` or `query` picks the source (the cookie of the same name
+by default) and `values` are literals or patterns, as for an indicator. They
+are given here rather than to `createIndicators` so the values stay out of
+the browser bundle; see [Hard flags](/overview/hard-flags) for what the
+rewrites do with them.
 
 ## What it detects
 
