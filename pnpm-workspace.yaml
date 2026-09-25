@@ -12,6 +12,8 @@ packages:
 # pnpm 10 defaults this to false, so without it the packages above resolve
 # their dependency on this module from the registry instead of from the
 # checkout next to them.
+allowBuilds:
+  unrs-resolver: true
 linkWorkspacePackages: true
 # Keep plain semver ranges in package.json: the range is what a published
 # module is installed by, and what a distribution reads to resolve versions.
