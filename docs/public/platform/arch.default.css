@@ -1,2 +1,2 @@
 :root { --arch: "not sent" }
-[data-arch] { display: none }
+.downloads [data-arch] { display: none }

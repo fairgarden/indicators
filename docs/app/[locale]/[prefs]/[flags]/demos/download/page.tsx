@@ -113,7 +113,8 @@ User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) …
         parallel with the accent&apos;s, and a 304 each once the browser has them. They are not
         preloaded, since the plugin preloads only what every page links. Arriving here from
         another page without a reload, the navigation waits for them, so the buttons never show
-        all at once first.
+        all at once first. Leaving the same way, they stay in the <code>&lt;head&gt;</code>,
+        which is why every rule in them starts at <code>.downloads</code>.
       </p>
       <h2>Inspector</h2>
       <Inspector />

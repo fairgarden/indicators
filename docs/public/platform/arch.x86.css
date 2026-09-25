@@ -1,2 +1,2 @@
 :root { --arch: "x86" }
-[data-arch]:not([data-arch="x86"]) { display: none }
+.downloads [data-arch]:not([data-arch="x86"]) { display: none }

@@ -35,6 +35,8 @@ export interface StylesheetsProps {
  * Such a page can arrive with a client-side navigation, so its links carry
  * a `precedence`: React hoists them into the `<head>` and holds the
  * navigation until they have loaded, and the page never shows unstyled.
+ * React also leaves them there once the page is gone, so such a stylesheet
+ * should style only what its page renders.
  *
  * The `data-indicators-stylesheet` attribute is how `usePref` finds the
  * link to fetch again after it writes the cookie.

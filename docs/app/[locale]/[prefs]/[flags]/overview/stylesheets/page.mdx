@@ -121,6 +121,12 @@ it. The page's link carries a React 19 `precedence`, so React puts it in the
 `<head>`. It also holds a client-side navigation to the page until the
 stylesheet has loaded, so the page never shows a frame without it.
 
+React leaves the link in the `<head>` after the page is gone, so a visitor
+who moves on without a reload keeps the stylesheet for the rest of the
+visit. Write its rules for what that page renders alone, such as
+`.downloads [data-os]` rather than `[data-os]`. What `global: false` saves
+is the request on the other pages, not the rules.
+
 Such a stylesheet is not in the preload header, which lists only what
 every page links. A `Link` header that differed from page to page would
 not survive two sets of pages overlapping, since Next keeps one value per

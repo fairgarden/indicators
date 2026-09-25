@@ -1,2 +1,2 @@
 :root { --arch: "arm" }
-[data-arch]:not([data-arch="arm"]) { display: none }
+.downloads [data-arch]:not([data-arch="arm"]) { display: none }

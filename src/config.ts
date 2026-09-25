@@ -63,6 +63,10 @@ export interface IndicatorDefinition {
    * leaves it to the pages that use it, each rendering `<Stylesheets
    * only={[key]}>`, so the rest never ask for it. Only meaningful with a
    * `stylesheet`.
+   *
+   * Once a page has linked it, React keeps it in the `<head>` for the rest
+   * of the visit, so its rules should reach only what that page renders:
+   * `.downloads [data-os]`, not `[data-os]`.
    */
   global?: boolean
 }
