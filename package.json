@@ -46,7 +46,7 @@
     "release:check": "fg-dist release --check"
   },
   "devDependencies": {
-    "@fairgarden/distribution": "^0.1.0-alpha.0",
+    "@fairgarden/distribution": "^0.1.0-alpha.1",
     "@types/node": "^26.6.2",
     "@types/react": "^19.3.0",
     "@typescript-eslint/eslint-plugin": "^8.70.0",
