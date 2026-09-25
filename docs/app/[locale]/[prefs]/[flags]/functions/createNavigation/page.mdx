@@ -122,6 +122,14 @@ setting fetches that stylesheet again instead of refreshing, and the value
 is read from the cookie after mounting, so it is `undefined` on the server
 and on the first render.
 
+The cookie is read and written through `document.cookie`, so an `HttpOnly`
+cookie is out of reach. The hook reads `undefined` for it, and setting it
+changes nothing, since a browser does not let a script overwrite an
+`HttpOnly` cookie. Such a cookie is set by a server response, such as the
+one that signs the user in. For a stylesheet indicator, the stylesheet's
+custom property tells scripts which value matched; see
+[Stylesheets](/overview/stylesheets).
+
 ## Notes
 
 The locale comes from the route params, not from a provider, so nothing has

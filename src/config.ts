@@ -57,6 +57,14 @@ export interface IndicatorDefinition {
    * to a year. Only meaningful for a cookie-backed indicator.
    */
   maxAge?: number
+  /**
+   * Whether every page links the stylesheet. Defaults to true: the root
+   * layout's `<Stylesheets>` links it and the plugin preloads it. `false`
+   * leaves it to the pages that use it, each rendering `<Stylesheets
+   * only={[key]}>`, so the rest never ask for it. Only meaningful with a
+   * `stylesheet`.
+   */
+  global?: boolean
 }
 
 export type Definitions = Readonly<Record<string, IndicatorDefinition>>
@@ -170,6 +178,8 @@ export interface NormalizedStylesheet {
   /** `href` without its `.css`: what the files it is rewritten to are named after. */
   base: string
   maxAge: number
+  /** Linked on every page, rather than by the pages that use it. */
+  global: boolean
 }
 
 export interface NormalizedConfig {
@@ -288,7 +298,13 @@ const normalizeIndicators = (
 
   for (const [key, definition] of Object.entries(definitions ?? {})) {
     const indicator = normalizeIndicator(kind, key, definition)
+    if (definition.global !== undefined && typeof definition.global !== 'boolean') {
+      throw new Error(`${kind}.${key}.global must be true or false.`)
+    }
     if (definition.stylesheet === undefined) {
+      if (definition.global !== undefined) {
+        throw new Error(`${kind}.${key}.global says where a stylesheet is linked, and it has none.`)
+      }
       segment.push(indicator)
       continue
     }
@@ -304,6 +320,7 @@ const normalizeIndicators = (
       href,
       base: href.slice(0, -'.css'.length),
       maxAge: indicator.maxAge,
+      global: definition.global ?? true,
     })
   }
 

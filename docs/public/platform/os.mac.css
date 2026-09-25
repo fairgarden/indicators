@@ -1,0 +1,2 @@
+:root { --os: "macOS" }
+.downloads [data-os]:not([data-os="mac"]) { display: none }

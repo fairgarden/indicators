@@ -72,7 +72,11 @@ with:
 - **No inline script.** The theme is `data-theme` in the HTML the browser
   receives and `color-scheme` in a stylesheet it loads before painting. A
   script is never in the path to the first frame, so there is no frame in
-  the wrong state.
+  the wrong state. A script would also see less than the routing layer
+  does. A header added on the way to the server never reaches the browser;
+  the country an edge network works out from the IP is an example. An
+  `HttpOnly` cookie is hidden from scripts. A rewrite can match on either,
+  and the page only ever sees the name of the value that matched.
 - **No serverless function.** Every variant is prerendered, or rendered once
   on its first request and static from then on. A stylesheet preference is a
   static file the request is rewritten to. A hard flag's page is a static

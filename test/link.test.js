@@ -134,6 +134,24 @@ test('renders a link per stylesheet indicator, under the mount', () => {
   assert.equal(renderToStaticMarkup(createElement(Stylesheets, { indicators })), '')
 })
 
+test('leaves a stylesheet that is not global to the pages that name it', () => {
+  const scoped = createIndicators({
+    segments: [],
+    prefs: { theme: { values: ['dark'], stylesheet: '/theme.css' } },
+    flags: { os: { header: 'user-agent', values: { mac: '.*Mac.*' }, stylesheet: '/os.css', global: false } },
+  })
+  // the layout: global ones only, as before
+  assert.equal(
+    renderToStaticMarkup(createElement(Stylesheets, { indicators: scoped })),
+    '<link rel="stylesheet" href="/theme.css" data-indicators-stylesheet="theme"/>'
+  )
+  // a page: the ones it names, which React hoists and waits for
+  assert.equal(
+    renderToStaticMarkup(createElement(Stylesheets, { indicators: scoped, only: ['os'], mount: '/id' })),
+    '<link rel="stylesheet" href="/id/os.css" data-indicators-stylesheet="os" data-precedence="indicators"/>'
+  )
+})
+
 test('leaves hrefs alone and reports no locale for a site in one language', () => {
   const single = createIndicators({ segments: [] })
   const { Link, useLocale } = createNavigation(single, { mount: '/docs' })

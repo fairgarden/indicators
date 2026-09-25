@@ -7,9 +7,9 @@ that.
 
 ## The config merges
 
-`withFairGardenIndicators` only adds rewrites and redirects, which the
-monolith knows how to merge, and puts nothing in `env` or anywhere else it
-would refuse. The chain comes out under the mount:
+`withFairGardenIndicators` only adds rewrites, redirects and headers, which
+the monolith knows how to merge, and puts nothing in `env` or anywhere else
+it would refuse. The chain comes out under the mount:
 
 ```
 /:path((?!en|fr|…).+)  -> /en/:path      in the app
@@ -18,7 +18,10 @@ would refuse. The chain comes out under the mount:
 
 Every source and destination is prefixed, `has` conditions ride along, and
 the chain works unchanged because every step is relative to what follows the
-mount.
+mount. The [stylesheet](/overview/stylesheets) headers move too. Their
+sources are prefixed, and so is every path a `Link` header names, so the
+preload on `/id/login` names `/id/theme.css`, the same URL the layout's
+`<Stylesheets mount={…}>` links to.
 
 The monolith loads each app's `next.config.ts` with Node itself, which
 resolves a relative import only with its extension. Import the config's

@@ -70,3 +70,66 @@ A flag that *gates* something — a cohort let into a beta by a value they
 were given — is a [hard flag](/overview/hard-flags), declared in
 `next.config.ts` so the value stays on the server, and it switches routes
 rather than variants.
+
+## Headers a browser sends only when asked
+
+Most headers a flag reads arrive on every request: `Accept-Language`,
+`Save-Data` when it is on, `Sec-GPC`, and whatever the edge adds, such as
+the country from the IP. So do three client hints: `Sec-CH-UA`,
+`Sec-CH-UA-Mobile` and `Sec-CH-UA-Platform`.
+
+The other client hints are sent only once the site asks for them, with
+`Accept-CH` on a page. That includes the device's memory
+(`Device-Memory`), its architecture and model (`Sec-CH-UA-Arch`,
+`Sec-CH-UA-Model`), the viewport, `Sec-CH-Prefers-Reduced-Motion` and
+`Sec-CH-Prefers-Color-Scheme`, and the network hints (`ECT`, `RTT`,
+`Downlink`). The plugin asks for every hint an indicator or hard flag
+reads, on every page:
+
+```ts
+flags: {
+  // which installer a download page offers first
+  arch: { header: 'sec-ch-ua-arch', values: { arm: '"arm"', x86: '"x86"' } },
+  // a device short on memory: no blur, no parallax
+  memory: { header: 'device-memory', values: { low: '0\\.25|0\\.5|1|2' }, stylesheet: '/memory.css' },
+}
+```
+
+```
+Accept-CH: device-memory, sec-ch-ua-arch
+```
+
+A hint's value is matched as the browser sends it. `Sec-CH-UA-Arch` is a
+quoted string, `"arm"` with the quotes, and `Device-Memory` is the memory
+in gigabytes, rounded to a power of two.
+
+On a first visit, the request for the page does not carry the hint, since
+the browser has not been asked yet. Every request the page makes does,
+its stylesheets included. The browser also remembers the request for the
+site, so every later page request carries it too. That makes a difference
+to where the hint can be used:
+
+- **Through a [stylesheet](/overview/stylesheets)**, it works from the
+  first page, because the stylesheet is requested by the page that asked.
+- **In the path**, the first page a visitor opens is the default variant,
+  and the ones after it are right. With `clientHints: 'critical'`, the
+  plugin also names the hints the path reads in `Critical-CH`, and the
+  browser retries that first request with them. That costs one extra round
+  trip, once per visitor. Above, that is `sec-ch-ua-arch` alone. A
+  download page is often the first page a visitor opens, so there the
+  round trip is worth it.
+
+`clientHints: false` in
+[`withFairGardenIndicators`](/functions/withFairGardenIndicators) leaves
+`Accept-CH` to the app. A browser acts on it only over HTTPS, or on
+`localhost`.
+
+Only Chromium-based browsers send these hints. Firefox and Safari send none
+of them, so their visitors always get the default, the same as for any
+header that is missing.
+
+Some hints repeat what a media query already says, in every browser:
+reduced motion, the color scheme, the viewport width. For how a page looks,
+use the media query, and read the hint only to change what a page renders.
+The others have no media query at all. No CSS can tell how much memory a
+device has or what it runs on, which is why the examples above use them.

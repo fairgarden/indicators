@@ -1,0 +1,2 @@
+:root { --os: "Windows" }
+.downloads [data-os]:not([data-os="windows"]) { display: none }

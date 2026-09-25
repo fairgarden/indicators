@@ -67,6 +67,7 @@ preferences it keeps are [stylesheets](/overview/stylesheets).
 | `prerender` | `true` | the values `generateStaticParams` includes: `true` for all, `false` for none, or a list of names. See [the long tail](/overview/static) |
 | `maxAge` | one year | seconds a cookie written by `usePref` lives |
 | `stylesheet` | — | express it through this stylesheet instead of the path. See [Stylesheets](/overview/stylesheets) |
+| `global` | `true` | with a `stylesheet`: whether every page links it. `false` leaves it to the pages that name it in `<Stylesheets only={[…]}>`. See [On some pages only](/overview/stylesheets) |
 
 Exactly one of `cookie`, `header` and `query`. A value is letters, digits,
 `_` and `-`, starting with a letter or digit — nothing a URL would
@@ -87,7 +88,7 @@ config and a few facts:
 | --- | --- |
 | `config` | the config with defaults filled in and indicators sorted by key |
 | `segments` | the segments the tree has, in path order |
-| `stylesheets()` | the links a layout renders, one per stylesheet indicator; `<Stylesheets>` does it |
+| `stylesheets()` | one per stylesheet indicator: its key, kind, `href` and whether it is `global`. `<Stylesheets>` renders them |
 | `locales`, `defaultLocale` | as given, typed to the literals |
 | `isLocale(value)` | a type guard for a supported locale |
 | `locale`, `prefs`, `flags` | the [per-level](/functions/generateStaticParams) objects |
