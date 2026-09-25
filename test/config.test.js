@@ -190,6 +190,7 @@ refuses('a stylesheet that is not a css file', { ...base, prefs: { theme: { valu
 refuses('a stylesheet with a query', { ...base, prefs: { theme: { values: ['dark'], stylesheet: '/theme.css?x' } } }, /ending in \.css/)
 refuses('a stylesheet under a locale directory', { ...base, prefs: { theme: { values: ['dark'], stylesheet: '/en/theme.css' } } }, /which is a locale/)
 refuses('two indicators on one stylesheet', { ...base, prefs: { a: { values: ['x'], stylesheet: '/t.css' }, b: { values: ['y'], stylesheet: '/t.css' } } }, /share the stylesheet/)
+refuses('a pref and a flag with stylesheets under one key', { ...base, prefs: { mode: { values: ['x'], stylesheet: '/a.css' } }, flags: { mode: { header: 'x', values: ['y'], stylesheet: '/b.css' } } }, /prefs\.mode and flags\.mode both have a stylesheet/)
 refuses('global without a stylesheet', { ...base, prefs: { theme: { values: ['dark'], global: false } } }, /has none/)
 refuses('a global that is not a boolean', { ...base, prefs: { theme: { values: ['dark'], stylesheet: '/t.css', global: 'no' } } }, /true or false/)
 

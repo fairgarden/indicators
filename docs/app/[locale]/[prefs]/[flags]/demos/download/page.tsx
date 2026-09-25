@@ -39,7 +39,8 @@ export default function DownloadDemo() {
             </a>
           ))}
         </div>
-        <p>
+        {/* CSS content, which not every screen reader reads; the button says the same. */}
+        <p aria-hidden="true">
           Operating system: <strong className="detected-os" />. Architecture:{' '}
           <strong className="detected-arch" />.
         </p>

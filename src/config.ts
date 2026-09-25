@@ -494,11 +494,19 @@ export const normalizeConfig = (config: IndicatorsConfig): NormalizedConfig => {
     compareKeys(a.key, b.key)
   )
   const seen = new Set<string>()
+  const keys = new Set<string>()
   for (const sheet of stylesheets) {
     if (seen.has(sheet.href)) {
       throw new Error(`Two indicators share the stylesheet ${sheet.href}; each needs its own.`)
     }
     seen.add(sheet.href)
+    // `<Stylesheets only>` and `usePref` name a stylesheet by its key alone.
+    if (keys.has(sheet.key)) {
+      throw new Error(
+        `prefs.${sheet.key} and flags.${sheet.key} both have a stylesheet, which is named by its key alone; rename one.`
+      )
+    }
+    keys.add(sheet.key)
     // Its rewrites run before the locale steps, and a locale directory would
     // then have the empty segments pushed into the file it was rewritten to.
     const directory = sheet.href.split('/')[1] ?? ''

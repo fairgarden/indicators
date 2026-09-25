@@ -55,7 +55,10 @@ export interface PluginOptions {
    * Whether every page names the app's global stylesheets in a `Link`
    * preload header, which a CDN can send ahead of the page as 103 Early
    * Hints. Defaults to true; nothing is added without one. A stylesheet
-   * declared `global: false` is never preloaded.
+   * declared `global: false` is never preloaded, and nor is one that reads
+   * a client hint the browser sends only when asked: on a first visit the
+   * 103 arrives before the `Accept-CH` that asks, and would preload the
+   * default.
    *
    * A page is any path outside `exclude` — `_next`, `api` and the rest,
    * and what `detectExclusions` finds — whose last segment has no

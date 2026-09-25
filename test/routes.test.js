@@ -403,21 +403,34 @@ test('tells the browser to ask for a stylesheet again on every page', () => {
   checkCustomRoutes(stylesheetHeaders(styled), 'header')
 })
 
-test('names every stylesheet in a preload header on every page', () => {
+test('names the stylesheets in a preload header on every page', () => {
   const headers = stylesheetPreloadHeaders(styled, { exclude: ['next.svg', 'health'], excludeStems: ['icon'] })
   checkCustomRoutes(headers, 'header')
   assert.equal(headers.length, 1)
-  assert.deepEqual(headers[0].headers, [
-    { key: 'Link', value: '</css/motion.css>; rel=preload; as=style, </theme.css>; rel=preload; as=style' },
-  ])
+  // not motion's, which reads a hint the browser sends only when asked
+  assert.deepEqual(headers[0].headers, [{ key: 'Link', value: '</theme.css>; rel=preload; as=style' }])
   const page = getPathMatch(headers[0].source, { strict: true, removeUnnamedParams: true })
-  for (const path of ['/', '/login', '/login/', '/en', '/en/login', '/entries', '/blog/v1.2/intro']) {
+  for (const path of [
+    '/',
+    '/login',
+    '/login/',
+    '/en',
+    '/en/login',
+    '/entries',
+    '/blog/v1.2/intro',
+    // beside a stylesheet, but no file of it
+    '/theme',
+    '/theme/x',
+    '/css',
+    '/css/login',
+  ]) {
     assert.ok(page(path), `${path} is a page`)
   }
   for (const path of [
     '/theme.css',
     '/theme.dark.css',
     '/css/motion.css',
+    '/css/motion.reduce.css',
     '/api',
     '/api/users',
     '/_next/static/chunks/a.js',
@@ -451,11 +464,30 @@ test('preloads only the stylesheets every page links, but asks for every hint', 
   assert.deepEqual(stylesheetPreloadHeaders(onlyScoped), [])
 })
 
+test('preloads no stylesheet whose hint the browser has yet to be asked for', () => {
+  const hinted = normalizeConfig({
+    segments: [],
+    prefs: { theme: { values: ['dark'], stylesheet: '/theme.css' } },
+    flags: {
+      memory: { header: 'Device-Memory', values: { low: '0\\.25|0\\.5|1|2' }, stylesheet: '/memory.css' },
+      platform: { header: 'Sec-CH-UA-Platform', values: { mac: '"macOS"' }, stylesheet: '/platform.css' },
+    },
+  })
+  // On a first visit a 103 comes before the Accept-CH, so the preload would
+  // fetch memory.default.css; the platform is sent unasked.
+  assert.deepEqual(stylesheetPreloadHeaders(hinted)[0].headers, [
+    { key: 'Link', value: '</platform.css>; rel=preload; as=style, </theme.css>; rel=preload; as=style' },
+  ])
+  assert.deepEqual(clientHintHeaders(hinted)[0].headers, [
+    { key: 'Accept-CH', value: 'device-memory, sec-ch-ua-platform' },
+  ])
+})
+
 test('asks for every client hint an indicator or hard flag reads, on every page', () => {
   const hinted = normalizeConfig({
     locales: ['en'],
     defaultLocale: 'en',
-    prefs: { theme: { values: ['dark'] } },
+    prefs: { theme: { values: ['dark'], stylesheet: '/theme.css' } },
     flags: {
       data: { header: 'ECT', values: ['slow-2g', '2g'] },
       motion: { header: 'Sec-CH-Prefers-Reduced-Motion', values: ['reduce'], stylesheet: '/motion.css' },

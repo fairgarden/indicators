@@ -111,6 +111,8 @@ to where the hint can be used:
 
 - **Through a [stylesheet](/overview/stylesheets)**, it works from the
   first page, because the stylesheet is requested by the page that asked.
+  For the same reason, the stylesheet is not preloaded: a preload sent
+  ahead of the page would go before the asking.
 - **In the path**, the first page a visitor opens is the default variant,
   and the ones after it are right. With `clientHints: 'critical'`, the
   plugin also names the hints the path reads in `Critical-CH`, and the

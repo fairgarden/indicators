@@ -48,7 +48,7 @@ React adds while rendering are appended, so they are unaffected.
 | `root` | the directory of the calling `next.config` | where to look for `public/` and `app/` |
 | `detectExclusions` | `true` | look at the app for paths to leave alone |
 | `hardFlags` | `{}` | route trees gated by a cookie or header. See [Hard flags](/overview/hard-flags) |
-| `preloadStylesheets` | `true` | name the global stylesheets in a `Link: rel=preload` header on every page; one declared `global: false` is never preloaded. See [Stylesheets](/overview/stylesheets) |
+| `preloadStylesheets` | `true` | name the global stylesheets in a `Link: rel=preload` header on every page; one declared `global: false`, or reading a client hint the browser sends only when asked, is never preloaded. See [Stylesheets](/overview/stylesheets) |
 | `clientHints` | `true` | ask for the client hints the indicators and hard flags read, with `Accept-CH` on every page; `'critical'` also names the path's in `Critical-CH`. See [Indicators](/overview/indicators) |
 
 `root` defaults to the config file's directory rather than the working

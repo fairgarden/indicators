@@ -117,7 +117,7 @@ flags: {
 ```
 
 The layout's `<Stylesheets>` then leaves it out, and no other page asks for
-it. The page's link carries a React `precedence`, so React puts it in the
+it. The page's link carries a React 19 `precedence`, so React puts it in the
 `<head>`. It also holds a client-side navigation to the page until the
 stylesheet has loaded, so the page never shows a frame without it.
 
@@ -151,10 +151,16 @@ CDN turns it into a 103 Early Hints response, which reaches the browser
 before the page does. The 304 then overlaps the time the server takes to
 answer, and there is little of it left.
 
+A stylesheet that reads a [client hint](/overview/indicators) the browser
+sends only when asked, such as `Device-Memory`, is left out. On a first
+visit the 103 arrives before the `Accept-CH` that asks for the hint, so
+the preload would go without it and fetch the default, and the page's link
+would use what it fetched.
+
 The header goes on every page. Here a page is any path that does not start
 with an excluded segment (`_next`, `api`, `.well-known`, `exclude`, and
 what the plugin found in the app) and whose last segment has no extension.
-`/fr/login` and `/` are pages; `/api/users`, `/favicon.ico` and
+`/fr/login`, `/theme` and `/` are pages; `/api/users`, `/favicon.ico` and
 `/theme.css` are not. `preloadStylesheets: false` in
 [`withFairGardenIndicators`](/functions/withFairGardenIndicators) turns it
 off.

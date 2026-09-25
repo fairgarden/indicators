@@ -140,18 +140,23 @@ const segmentPath = (
 const excluded = (
   config: NormalizedConfig,
   options: RewriteOptions,
-  /** Off to ask what is a page, which a path starting with a locale is. */
-  locales = true
+  /**
+   * On to ask what is a page instead, which leaves out what only the
+   * rewrites have to: a path starting with a locale is a page, and so is
+   * `/theme` beside `/theme.css`, whose files have an extension.
+   */
+  pages = false
 ): string => {
   // A stylesheet and the files it is rewritten to: the directory when it is
   // in one, otherwise its name whatever the extension, since `/theme.css`
   // is served beside `/theme.dark.css`.
-  const inDirectory = config.stylesheets.filter((sheet) => sheet.href.indexOf('/', 1) !== -1)
-  const atRoot = config.stylesheets.filter((sheet) => sheet.href.indexOf('/', 1) === -1)
+  const sheets = pages ? [] : config.stylesheets
+  const inDirectory = sheets.filter((sheet) => sheet.href.indexOf('/', 1) !== -1)
+  const atRoot = sheets.filter((sheet) => sheet.href.indexOf('/', 1) === -1)
 
   const names = [
     ...new Set([
-      ...(locales ? config.locales : []),
+      ...(pages ? [] : config.locales),
       ...config.exclude,
       ...(options.exclude ?? []),
       ...inDirectory.map((sheet) => firstSegment(sheet.href)),
@@ -289,12 +294,24 @@ export const stylesheetHeaders = (config: NormalizedConfig): Header[] =>
 
 /**
  * A `headers` source matching every page: any path that does not start with
- * what the locale rewrite leaves alone — `_next`, `api`, `.well-known`,
- * `exclude`, what the plugin found in the app — and whose last segment has
- * no extension. A path starting with a locale is one, and so is the root.
+ * what the locale rewrite leaves alone for a route's sake — `_next`, `api`,
+ * `.well-known`, `exclude`, what the plugin found in the app — and whose
+ * last segment has no extension. A path starting with a locale is one, and
+ * so is the root; the extension is what rules out a stylesheet's files.
  */
 const pageSource = (config: NormalizedConfig, options: RewriteOptions): string =>
-  `/:path((?!${excluded(config, options, false)})(?:[^/]*/)*[^/.]*)`
+  `/:path((?!${excluded(config, options, true)})(?:[^/]*/)*[^/.]*)`
+
+/**
+ * Headers a browser sends only once a page has asked for them with
+ * `Accept-CH`: every `Sec-CH-` header, and the older hints without the
+ * prefix. The three a browser sends unasked (`Sec-CH-UA`, `-Mobile`,
+ * `-Platform`) may be asked for all the same.
+ */
+const CLIENT_HINT = /^(?:sec-ch-.+|device-memory|dpr|viewport-width|width|rtt|downlink|ect)$/
+
+/** The client hints a browser sends before any page has asked for them. */
+const UNASKED_HINTS = new Set(['sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform'])
 
 /**
  * A `Link` header on every page naming its stylesheets. The request is a
@@ -310,22 +327,21 @@ export const stylesheetPreloadHeaders = (
 ): Header[] => {
   // A stylesheet only some pages link would be preloaded, unused, on the
   // rest; and one `Link` per set of pages would not survive two sets
-  // matching the same path, since Next keeps the last value.
-  const global = config.stylesheets.filter((sheet) => sheet.global)
-  if (global.length === 0) return []
-  const value = global
+  // matching the same path, since Next keeps the last value. One that reads
+  // a hint the browser sends only when asked is left out too: on a first
+  // visit the 103 arrives before the `Accept-CH` that asks, so the preload
+  // would fetch the default, and the page's link would use it.
+  const preloaded = config.stylesheets.filter(
+    ({ global, source }) =>
+      global &&
+      !(source.type === 'header' && CLIENT_HINT.test(source.key) && !UNASKED_HINTS.has(source.key))
+  )
+  if (preloaded.length === 0) return []
+  const value = preloaded
     .map((sheet) => `<${sheet.href}>; rel=preload; as=style`)
     .join(', ')
   return [{ source: pageSource(config, options), headers: [{ key: 'Link', value }] }]
 }
-
-/**
- * Headers a browser sends only once a page has asked for them with
- * `Accept-CH`: every `Sec-CH-` header, and the older hints without the
- * prefix. The three a browser sends unasked (`Sec-CH-UA`, `-Mobile`,
- * `-Platform`) may be asked for all the same.
- */
-const CLIENT_HINT = /^(?:sec-ch-.+|device-memory|dpr|viewport-width|width|rtt|downlink|ect)$/
 
 export interface ClientHintOptions extends RewriteOptions {
   /**

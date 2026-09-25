@@ -66,7 +66,7 @@ preferences it keeps are [stylesheets](/overview/stylesheets).
 | `query` | — | read from this query parameter |
 | `prerender` | `true` | the values `generateStaticParams` includes: `true` for all, `false` for none, or a list of names. See [the long tail](/overview/static) |
 | `maxAge` | one year | seconds a cookie written by `usePref` lives |
-| `stylesheet` | — | express it through this stylesheet instead of the path. See [Stylesheets](/overview/stylesheets) |
+| `stylesheet` | — | express it through this stylesheet instead of the path; a preference and a flag with stylesheets cannot share a key. See [Stylesheets](/overview/stylesheets) |
 | `global` | `true` | with a `stylesheet`: whether every page links it. `false` leaves it to the pages that name it in `<Stylesheets only={[…]}>`. See [On some pages only](/overview/stylesheets) |
 
 Exactly one of `cookie`, `header` and `query`. A value is letters, digits,
