@@ -8,8 +8,10 @@ withFairGardenIndicators(
 ): NextConfig
 ```
 
-Adds the [rewrites](/overview/rewrites) and redirects. Everything else in
-the config is returned as it was.
+Adds the [rewrites](/overview/rewrites), the redirects, the headers of the
+[stylesheet](/overview/stylesheets) indicators, and `Accept-CH` for the
+[client hints](/overview/indicators) they read. Everything else in the
+config is returned as it was.
 
 ```ts
 // next.config.ts
@@ -27,9 +29,17 @@ export default withFairGardenIndicators(nextConfig, indicators)
 ```
 
 The app's own `beforeFiles` rewrites run first, then the chain; the app's
-redirects and headers come first too. A bare `rewrites` array is treated as
-`afterFiles`, as Next does. The headers it adds are the cache policy of each
-[stylesheet](/overview/stylesheets) indicator.
+redirects come first too. A bare `rewrites` array is treated as
+`afterFiles`, as Next does.
+
+The headers are the cache policy of each stylesheet, after the app's own
+headers, and on every page a preload of every global stylesheet and an
+`Accept-CH`, before them. Of the `headers` entries that match a request,
+Next keeps the last value for each header. So the cache policy always
+applies, and a `Link` or `Accept-CH` that the app's own `headers` set on a
+page replaces the plugin's. Such an app should list the stylesheets or
+hints in its own header, or turn the plugin's off. The preload headers
+React adds while rendering are appended, so they are unaffected.
 
 ## Options
 
@@ -38,6 +48,8 @@ redirects and headers come first too. A bare `rewrites` array is treated as
 | `root` | the directory of the calling `next.config` | where to look for `public/` and `app/` |
 | `detectExclusions` | `true` | look at the app for paths to leave alone |
 | `hardFlags` | `{}` | route trees gated by a cookie or header. See [Hard flags](/overview/hard-flags) |
+| `preloadStylesheets` | `true` | name the global stylesheets in a `Link: rel=preload` header on every page; one declared `global: false`, or reading a client hint the browser sends only when asked, is never preloaded. See [Stylesheets](/overview/stylesheets) |
+| `clientHints` | `true` | ask for the client hints the indicators and hard flags read, with `Accept-CH` on every page; `'critical'` also names the path's in `Critical-CH`. See [Indicators](/overview/indicators) |
 
 `root` defaults to the config file's directory rather than the working
 directory, because a monolith loads an app's config from the monolith's own
@@ -82,9 +94,10 @@ which resolves a relative import only with one; set
 
 ## In a monolith
 
-Nothing here goes into `env`, and rewrites and redirects are the two things
-a monolith merges, so the result mounts like any app's config. Wrap it with
-`withMonolithicPortability` as usual:
+Nothing here goes into `env`, and rewrites, redirects and headers are what
+a monolith merges, so the result mounts like any app's config. The preload
+too: the monolith moves the paths a `Link` header names along with the
+sources. Wrap it with `withMonolithicPortability` as usual:
 
 ```ts
 export default withMonolithicPortability(withFairGardenIndicators(nextConfig, indicators))

@@ -1,0 +1,2 @@
+:root { --os: "Linux" }
+.downloads [data-os]:not([data-os="linux"]) { display: none }

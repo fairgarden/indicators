@@ -1,0 +1,2 @@
+:root { --os: "Android" }
+.downloads [data-os]:not([data-os="android"]) { display: none }

@@ -164,7 +164,7 @@ test("adds a cache policy per stylesheet after the app's own headers, and its re
   const config = withFairGardenIndicators(
     { headers: async () => [{ source: '/x', headers: [{ key: 'a', value: 'b' }] }] },
     styled,
-    { root: fixture(), detectExclusions: false }
+    { root: fixture(), detectExclusions: false, preloadStylesheets: false }
   )
   const headers = await config.headers()
   assert.deepEqual(headers, [
@@ -176,6 +176,49 @@ test("adds a cache policy per stylesheet after the app's own headers, and its re
   // two values and the default, then the root and the localize step: no empty segments
   assert.equal(rewrites.beforeFiles.length, 3 + 2)
   assert.deepEqual(await withFairGardenIndicators({}, indicators, { root: fixture() }).headers(), [])
+})
+
+test("preloads the stylesheets on pages by default, ahead of the app's own headers", async () => {
+  const own = { source: '/:path*', headers: [{ key: 'Link', value: '<https://api.example>; rel=preconnect' }] }
+  const headers = await withFairGardenIndicators({ headers: async () => [own] }, styled, {
+    root: fixture(),
+  }).headers()
+  assert.equal(headers.length, 3)
+  assert.deepEqual(headers[0].headers, [{ key: 'Link', value: '</theme.css>; rel=preload; as=style' }])
+  // what it found in the app is no page either
+  assert.ok(headers[0].source.includes('status(?:/|$)'))
+  assert.deepEqual(headers[1], own)
+  assert.equal(headers[2].source, '/theme.css')
+})
+
+test('asks for the client hints the indicators read, and names the path\'s as critical on request', async () => {
+  const hinted = createIndicators({
+    segments: ['flags'],
+    flags: {
+      data: { header: 'ect', values: ['2g'] },
+      motion: { header: 'sec-ch-prefers-reduced-motion', values: ['reduce'], stylesheet: '/motion.css' },
+    },
+  })
+  const headersOf = async (clientHints) =>
+    (await withFairGardenIndicators({}, hinted, {
+      root: fixture(),
+      preloadStylesheets: false,
+      hardFlags: { mobile: { header: 'sec-ch-ua-mobile', values: { yes: '\\?1' } } },
+      ...(clientHints === undefined ? {} : { clientHints }),
+    }).headers()).filter((rule) => rule.source !== '/motion.css')
+
+  assert.deepEqual((await headersOf())[0].headers, [
+    { key: 'Accept-CH', value: 'ect, sec-ch-prefers-reduced-motion, sec-ch-ua-mobile' },
+  ])
+  assert.deepEqual((await headersOf('critical'))[0].headers, [
+    { key: 'Accept-CH', value: 'ect, sec-ch-prefers-reduced-motion, sec-ch-ua-mobile' },
+    { key: 'Critical-CH', value: 'ect, sec-ch-ua-mobile' },
+  ])
+  assert.deepEqual(await headersOf(false), [])
+  // nothing to ask for, nothing added
+  assert.deepEqual(await withFairGardenIndicators({}, styled, { root: fixture(), preloadStylesheets: false }).headers(), [
+    { source: '/theme.css', headers: [{ key: 'Cache-Control', value: 'private, no-cache, stale-if-error=86400' }] },
+  ])
 })
 
 test('reports the files a stylesheet needs when they are not in public/', async () => {

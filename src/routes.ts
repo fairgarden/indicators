@@ -6,6 +6,7 @@ import {
   type NormalizedHardFlag,
   type NormalizedIndicator,
   type NormalizedStylesheet,
+  type NormalizedValue,
   type Segment,
 } from './config.ts'
 import { EMPTY_SEGMENT, PAIR_SEPARATOR, VALUE_SEPARATOR } from './segments.ts'
@@ -77,6 +78,13 @@ export interface RewriteOptions {
 
 const alternation = (values: readonly string[]): string => values.map(escapeRegExp).join('|')
 
+/**
+ * A value's pattern as a `has` value. Next anchors it as `^…$`, which binds
+ * only the outer alternatives of `AT|BE|DE`, so `DEU` would match; the
+ * group makes it the whole value, as the config promises.
+ */
+const whole = (value: NormalizedValue): string => `(?:${value.pattern})`
+
 /** `:locale(en|fr)` — a segment that is one of the locales. */
 const localeParam = (config: NormalizedConfig): string =>
   `:locale(${alternation(config.locales)})`
@@ -129,16 +137,26 @@ const segmentPath = (
  * localized. Each entry has to be a whole segment: `en` must not exclude
  * `/entries`.
  */
-const excluded = (config: NormalizedConfig, options: RewriteOptions): string => {
+const excluded = (
+  config: NormalizedConfig,
+  options: RewriteOptions,
+  /**
+   * On to ask what is a page instead, which leaves out what only the
+   * rewrites have to: a path starting with a locale is a page, and so is
+   * `/theme` beside `/theme.css`, whose files have an extension.
+   */
+  pages = false
+): string => {
   // A stylesheet and the files it is rewritten to: the directory when it is
   // in one, otherwise its name whatever the extension, since `/theme.css`
   // is served beside `/theme.dark.css`.
-  const inDirectory = config.stylesheets.filter((sheet) => sheet.href.indexOf('/', 1) !== -1)
-  const atRoot = config.stylesheets.filter((sheet) => sheet.href.indexOf('/', 1) === -1)
+  const sheets = pages ? [] : config.stylesheets
+  const inDirectory = sheets.filter((sheet) => sheet.href.indexOf('/', 1) !== -1)
+  const atRoot = sheets.filter((sheet) => sheet.href.indexOf('/', 1) === -1)
 
   const names = [
     ...new Set([
-      ...config.locales,
+      ...(pages ? [] : config.locales),
       ...config.exclude,
       ...(options.exclude ?? []),
       ...inDirectory.map((sheet) => firstSegment(sheet.href)),
@@ -218,7 +236,7 @@ export const indicatorRewrites = (
       const pair = `${indicator.key}${VALUE_SEPARATOR}${value.name}`
       rewrites.push({
         source: `${base.source}/:path*`,
-        has: [{ type: indicator.source.type, key: indicator.source.key, value: value.pattern }],
+        has: [{ type: indicator.source.type, key: indicator.source.key, value: whole(value) }],
         destination: `${base.destination.replace(
           `:${kind}`,
           `:${kind}${PAIR_SEPARATOR}${pair}`
@@ -252,7 +270,7 @@ export const stylesheetRewrites = (config: NormalizedConfig): Rewrite[] =>
     ...sheet.values.map(
       (value): Rewrite => ({
         source: sheet.href,
-        has: [{ type: sheet.source.type, key: sheet.source.key, value: value.pattern }],
+        has: [{ type: sheet.source.type, key: sheet.source.key, value: whole(value) }],
         destination: stylesheetFile(sheet, value.name),
       })
     ),
@@ -273,6 +291,105 @@ export const stylesheetHeaders = (config: NormalizedConfig): Header[] =>
       { key: 'Cache-Control', value: 'private, no-cache, stale-if-error=86400' },
     ],
   }))
+
+/**
+ * A `headers` source matching every page: any path that does not start with
+ * what the locale rewrite leaves alone for a route's sake — `_next`, `api`,
+ * `.well-known`, `exclude`, what the plugin found in the app — and whose
+ * last segment has no extension. A path starting with a locale is one, and
+ * so is the root; the extension is what rules out a stylesheet's files.
+ */
+const pageSource = (config: NormalizedConfig, options: RewriteOptions): string =>
+  `/:path((?!${excluded(config, options, true)})(?:[^/]*/)*[^/.]*)`
+
+/**
+ * Headers a browser sends only once a page has asked for them with
+ * `Accept-CH`: every `Sec-CH-` header, and the older hints without the
+ * prefix. The three a browser sends unasked (`Sec-CH-UA`, `-Mobile`,
+ * `-Platform`) may be asked for all the same.
+ */
+const CLIENT_HINT = /^(?:sec-ch-.+|device-memory|dpr|viewport-width|width|rtt|downlink|ect)$/
+
+/** The client hints a browser sends before any page has asked for them. */
+const UNASKED_HINTS = new Set(['sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform'])
+
+/**
+ * A `Link` header on every page naming its stylesheets. The request is a
+ * 304 on nearly every page, and the page cannot render before it, so
+ * starting it early is most of its cost. On its own the header gains
+ * little, since Next sends the `<head>` with the headers and the browser
+ * finds the `<link>` in it straight away; it pays off when a CDN turns it
+ * into 103 Early Hints, sent before the page is ready.
+ */
+export const stylesheetPreloadHeaders = (
+  config: NormalizedConfig,
+  options: RewriteOptions = {}
+): Header[] => {
+  // A stylesheet only some pages link would be preloaded, unused, on the
+  // rest; and one `Link` per set of pages would not survive two sets
+  // matching the same path, since Next keeps the last value. One that reads
+  // a hint the browser sends only when asked is left out too: on a first
+  // visit the 103 arrives before the `Accept-CH` that asks, so the preload
+  // would fetch the default, and the page's link would use it.
+  const preloaded = config.stylesheets.filter(
+    ({ global, source }) =>
+      global &&
+      !(source.type === 'header' && CLIENT_HINT.test(source.key) && !UNASKED_HINTS.has(source.key))
+  )
+  if (preloaded.length === 0) return []
+  const value = preloaded
+    .map((sheet) => `<${sheet.href}>; rel=preload; as=style`)
+    .join(', ')
+  return [{ source: pageSource(config, options), headers: [{ key: 'Link', value }] }]
+}
+
+export interface ClientHintOptions extends RewriteOptions {
+  /**
+   * Also name, in `Critical-CH`, the hints the path depends on, so a
+   * browser that did not send one retries the request with it.
+   */
+  critical?: boolean
+}
+
+/**
+ * `Accept-CH` on every page, naming each client hint an indicator or a hard
+ * flag reads, so the browser sends it from then on.
+ *
+ * The request for the first page a visitor opens cannot carry a hint the
+ * browser has not been asked for yet; every request that page makes does,
+ * and so does every request after. A stylesheet is one of the first, so it
+ * gets the hint from the first page. A segment of the path needs it on the
+ * page's own request, which is what `Critical-CH` is for: the browser
+ * retries that request with the hint, at the cost of a round trip, once.
+ * Only the hints the path reads go in it; a stylesheet has no need.
+ */
+export const clientHintHeaders = (
+  config: NormalizedConfig,
+  hardFlags: NormalizedHardFlag[] = [],
+  options: ClientHintOptions = {}
+): Header[] => {
+  const hints = (sources: Array<{ source: { type: string; key: string } }>): string[] => [
+    ...new Set(
+      sources
+        .filter(({ source }) => source.type === 'header' && CLIENT_HINT.test(source.key))
+        .map(({ source }) => source.key)
+    ),
+  ]
+  const inPath = hints([...config.prefs, ...config.flags, ...hardFlags])
+  const all = hints([...config.prefs, ...config.flags, ...hardFlags, ...config.stylesheets])
+  if (all.length === 0) return []
+
+  const critical = options.critical ? inPath : []
+  return [
+    {
+      source: pageSource(config, options),
+      headers: [
+        { key: 'Accept-CH', value: all.sort().join(', ') },
+        ...(critical.length > 0 ? [{ key: 'Critical-CH', value: critical.sort().join(', ') }] : []),
+      ],
+    },
+  ]
+}
 
 /** The whole chain, in the order it has to run. */
 export const indicatorsRewrites = (

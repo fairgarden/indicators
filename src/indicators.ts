@@ -126,6 +126,8 @@ export interface Stylesheet {
   kind: 'prefs' | 'flags'
   /** Its public URL, without any mount prefix. */
   href: string
+  /** Linked by the root layout on every page; otherwise by the pages that use it. */
+  global: boolean
 }
 
 export interface Indicators<C extends IndicatorsConfig> {
@@ -328,7 +330,7 @@ export const createIndicators = <const C extends IndicatorsConfig>(
       },
 
     stylesheets: () =>
-      normalized.stylesheets.map(({ key, kind, href }) => ({ key, kind, href })),
+      normalized.stylesheets.map(({ key, kind, href, global }) => ({ key, kind, href, global })),
 
     href: (href, locale) => localizeHref(normalized, href, locale),
     splitLocale: (pathname) =>

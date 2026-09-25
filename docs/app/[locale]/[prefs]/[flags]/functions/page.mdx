@@ -13,7 +13,7 @@ On the object `createIndicators` returns, for layouts and pages:
 - [`layout` and `page`](/functions/layout) — the same, as a wrapper
 - [`encode` and `decode`](/functions/encode) — a segment from values, and back
 - [`href`, `splitLocale`, `negotiate`](/functions/href) — locale-aware paths, server side
-- `stylesheets()` and the `Stylesheets` component — the links for indicators expressed through a [stylesheet](/overview/stylesheets)
+- `stylesheets()` and the `Stylesheets` component — the links for indicators expressed through a [stylesheet](/overview/stylesheets): the global ones in the layout, and with `only`, the ones a page links itself
 
 Standalone, for tests and tooling:
 
@@ -23,7 +23,7 @@ Standalone, for tests and tooling:
 
 For `next.config.ts`:
 
-- [`withFairGardenIndicators`](/functions/withFairGardenIndicators) — add the rewrites and redirects
+- [`withFairGardenIndicators`](/functions/withFairGardenIndicators) — add the rewrites, redirects and headers
 - [`detectExclusions`](/functions/helpers) — what a look at the app keeps out of the locale rewrite
 
 ## `@fairgarden/indicators/link`

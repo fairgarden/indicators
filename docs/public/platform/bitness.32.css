@@ -1,0 +1,2 @@
+:root { --bitness: "32-bit" }
+.downloads [data-bitness]:not([data-bitness="32"]) { display: none }

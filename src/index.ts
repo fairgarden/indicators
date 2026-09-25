@@ -53,6 +53,7 @@ export { negotiateLocale, parseAcceptLanguage } from './negotiate.ts'
 export { EMPTY_SEGMENT } from './segments.ts'
 
 export type {
+  ClientHintOptions,
   HardFlagRewrites,
   Has,
   Header,
@@ -61,9 +62,11 @@ export type {
   RewriteOptions,
 } from './routes.ts'
 export {
+  clientHintHeaders,
   hardFlagRewrites,
   indicatorsRedirects,
   indicatorsRewrites,
   stylesheetHeaders,
+  stylesheetPreloadHeaders,
   stylesheetRewrites,
 } from './routes.ts'

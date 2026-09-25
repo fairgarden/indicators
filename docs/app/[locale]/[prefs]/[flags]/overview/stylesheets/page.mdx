@@ -62,11 +62,115 @@ import { Stylesheets } from '@fairgarden/indicators'
 </head>
 ```
 
-A flag works the same way, from a header: `motion: { header:
-'sec-ch-prefers-reduced-motion', values: ['reduce'], stylesheet:
-'/motion.css' }` serves `/motion.reduce.css` to a browser that asks for
-less motion. Both stylesheets and the files they are rewritten to are
-excluded from the locale rewrite.
+A flag works the same way, from a header: `memory: { header:
+'device-memory', values: { low: '0\\.25|0\\.5|1|2' }, stylesheet:
+'/memory.css' }` serves `/memory.low.css` to a device with 2 GB of memory
+or less, which can turn off blur and parallax. No media query says how much
+memory a device has. That hint is one a browser sends only once the site
+asks for it with `Accept-CH`, which the plugin does on every page, and a
+stylesheet has it from the first page. See [Indicators](/overview/indicators) for
+which hints need asking for, and which browsers send them. Both stylesheets and the
+files they are rewritten to are excluded from the locale rewrite.
+
+The match happens in the routing layer, so it can use what a script in the
+page never could:
+
+```ts
+flags: {
+  // added by the edge network, never seen by the browser
+  region: { header: 'x-vercel-ip-country', values: { eu: 'AT|BE|DE|FR|IT|NL' }, stylesheet: '/region.css' },
+  // an HttpOnly cookie, hidden from scripts; any value will do
+  session: { cookie: 'session', values: { in: '.+' }, stylesheet: '/session.css' },
+}
+```
+
+A visitor from Germany gets `/region.eu.css`, and one with a session
+cookie gets `/session.in.css`. The session match only tests that the cookie
+is there, so an expired or forged cookie matches too. That is enough to
+decide how a page looks, such as an account menu instead of a sign-in
+button, but not anything that needs the session to be valid; the server
+still has to check that.
+
+A download page is another case. One static page carries a button for
+every platform, and a stylesheet chosen by `User-Agent` hides all but the
+visitor's. Every browser names its operating system there, so it works
+everywhere, from the first visit. Keeping it out of the path matters: a
+flag in the path would make a copy of every page on the site per
+platform, for one button. The [download demo](/demos/download) does
+this, with the architecture from `Sec-CH-UA-Arch` and `Sec-CH-UA-Bitness`
+on top.
+
+## On some pages only
+
+By default the layout links every stylesheet, so every page asks for it.
+A stylesheet that one page uses, like the download page's, can be left to
+that page:
+
+```ts
+flags: {
+  os: { header: 'user-agent', values: { mac: '.*Macintosh.*' }, stylesheet: '/platform/os.css', global: false },
+}
+```
+
+```tsx
+// app/[locale]/[prefs]/[flags]/download/page.tsx
+<Stylesheets indicators={indicators} only={['os']} />
+```
+
+The layout's `<Stylesheets>` then leaves it out, and no other page asks for
+it. The page's link carries a React 19 `precedence`, so React puts it in the
+`<head>`. It also holds a client-side navigation to the page until the
+stylesheet has loaded, so the page never shows a frame without it.
+
+React leaves the link in the `<head>` after the page is gone, so a visitor
+who moves on without a reload keeps the stylesheet for the rest of the
+visit. Write its rules for what that page renders alone, such as
+`.downloads [data-os]` rather than `[data-os]`. What `global: false` saves
+is the request on the other pages, not the rules.
+
+Such a stylesheet is not in the preload header, which lists only what
+every page links. A `Link` header that differed from page to page would
+not survive two sets of pages overlapping, since Next keeps one value per
+header. The plugin still asks for the client hints it reads on every page,
+since a browser remembers them for the whole site anyway.
+
+## The round trip, and the preload
+
+This is the tradeoff. The stylesheet blocks rendering and is never fresh,
+so even a page the browser has cached in full waits one round trip before
+it can render. The answer is a 304 with no body, so that round trip is
+short. A page the browser has not cached is not slowed down, because its
+stylesheet request goes out alongside the requests that page makes anyway.
+
+To keep the round trip short, every page names the stylesheets every page
+links in a `Link` header:
+
+```
+Link: </theme.css>; rel=preload; as=style
+```
+
+On its own the header gains little. A browser scans HTML for `<link>` tags
+as it arrives, before parsing it, and Next sends the `<head>` together
+with the response headers, so the request goes out at almost the same
+moment either way. On a fast network the 304 is back before the page has
+finished parsing, with or without the header. The header pays off when a
+CDN turns it into a 103 Early Hints response, which reaches the browser
+before the page does. The 304 then overlaps the time the server takes to
+answer, and there is little of it left.
+
+A stylesheet that reads a [client hint](/overview/indicators) the browser
+sends only when asked, such as `Device-Memory`, is left out. On a first
+visit the 103 arrives before the `Accept-CH` that asks for the hint, so
+the preload would go without it and fetch the default, and the page's link
+would use what it fetched.
+
+The header goes on every page. Here a page is any path that does not start
+with an excluded segment (`_next`, `api`, `.well-known`, `exclude`, and
+what the plugin found in the app) and whose last segment has no extension.
+`/fr/login`, `/theme` and `/` are pages; `/api/users`, `/favicon.ico` and
+`/theme.css` are not. `preloadStylesheets: false` in
+[`withFairGardenIndicators`](/functions/withFairGardenIndicators) turns it
+off.
 
 ## What the files say
 
@@ -95,6 +199,11 @@ the OS setting; the stylesheet that was served is the answer:
 getComputedStyle(document.documentElement).getPropertyValue('--theme')   // 'dark'
 getComputedStyle(document.documentElement).colorScheme                    // 'dark'
 ```
+
+For an indicator a script cannot read, such as a header added by the edge
+or an `HttpOnly` cookie, this is the only way to learn which value
+matched. It gives away the name of the value, never the cookie:
+`session.in.css` can set `--session: in`.
 
 Rendering never waits on a script. The link is ordinary render-blocking
 CSS, tiny, and applied before the first paint, so there is no flash of the

@@ -108,3 +108,37 @@ button[aria-pressed='true'] {
   font-size: 0.9em;
   overflow-wrap: anywhere;
 }
+/*
+ * The download demo. Which button shows, and what the readout says, come
+ * from /platform/os.css, /platform/arch.css and /platform/bitness.css:
+ * stylesheets chosen by the User-Agent, Sec-CH-UA-Arch and Sec-CH-UA-Bitness
+ * headers, with no script.
+ */
+.downloads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+.download {
+  display: inline-flex;
+  flex-direction: column;
+  padding: 0.6rem 1rem;
+  border-radius: 6px;
+  background: var(--accent, #6b7280);
+  color: #ffffff;
+  font-weight: 600;
+  text-decoration: none;
+}
+.download small {
+  font-weight: 400;
+}
+.detected-os::after {
+  content: var(--os, 'not recognized');
+}
+.detected-arch::after {
+  content: var(--arch, 'not sent');
+}
+.detected-bitness::after {
+  content: var(--bitness, 'not sent');
+}

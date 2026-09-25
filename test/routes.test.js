@@ -121,6 +121,24 @@ test('puts a flag in the path when its header matches in full', () => {
   )
 })
 
+test('matches a pattern with alternatives in full, not just its outer ones', () => {
+  const regional = normalizeConfig({
+    locales: ['en'],
+    defaultLocale: 'en',
+    flags: {
+      region: { header: 'x-country', values: { eu: 'AT|BE|DE' } },
+      zone: { header: 'x-country', values: { eu: 'AT|BE|DE' }, stylesheet: '/zone.css' },
+    },
+  })
+  const chain = indicatorsRewrites(regional)
+  assert.equal(resolve(chain, '/login', { 'x-country': 'BE' }), '/en/-/region~eu/login')
+  assert.equal(resolve(chain, '/zone.css', { 'x-country': 'BE' }), '/zone.eu.css')
+  for (const country of ['BEL', 'DEU', 'ATX', 'XAT']) {
+    assert.equal(resolve(chain, '/login', { 'x-country': country }), '/en/-/-/login', country)
+    assert.equal(resolve(chain, '/zone.css', { 'x-country': country }), '/zone.default.css', country)
+  }
+})
+
 test('combines everything in canonical order', () => {
   assert.equal(
     resolve(rewrites, '/login', {
@@ -294,7 +312,7 @@ test('does not quarantine a lookalike', () => {
 
 // ---- segments ----------------------------------------------------------------
 
-import { stylesheetHeaders } from '../dist/routes.js'
+import { clientHintHeaders, stylesheetHeaders, stylesheetPreloadHeaders } from '../dist/routes.js'
 
 test('inserts only the segments the tree has', () => {
   const only = normalizeConfig({ locales: ['en', 'fr'], defaultLocale: 'en', segments: ['locale'] })
@@ -383,6 +401,125 @@ test('tells the browser to ask for a stylesheet again on every page', () => {
     },
   ])
   checkCustomRoutes(stylesheetHeaders(styled), 'header')
+})
+
+test('names the stylesheets in a preload header on every page', () => {
+  const headers = stylesheetPreloadHeaders(styled, { exclude: ['next.svg', 'health'], excludeStems: ['icon'] })
+  checkCustomRoutes(headers, 'header')
+  assert.equal(headers.length, 1)
+  // not motion's, which reads a hint the browser sends only when asked
+  assert.deepEqual(headers[0].headers, [{ key: 'Link', value: '</theme.css>; rel=preload; as=style' }])
+  const page = getPathMatch(headers[0].source, { strict: true, removeUnnamedParams: true })
+  for (const path of [
+    '/',
+    '/login',
+    '/login/',
+    '/en',
+    '/en/login',
+    '/entries',
+    '/blog/v1.2/intro',
+    // beside a stylesheet, but no file of it
+    '/theme',
+    '/theme/x',
+    '/css',
+    '/css/login',
+  ]) {
+    assert.ok(page(path), `${path} is a page`)
+  }
+  for (const path of [
+    '/theme.css',
+    '/theme.dark.css',
+    '/css/motion.css',
+    '/css/motion.reduce.css',
+    '/api',
+    '/api/users',
+    '/_next/static/chunks/a.js',
+    '/_next/data/b/login.json',
+    '/.well-known/openid-configuration',
+    '/next.svg',
+    '/health',
+    '/icon',
+    '/favicon.ico',
+    '/docs/guide.pdf',
+  ]) {
+    assert.equal(page(path), false, `${path} is not a page`)
+  }
+  assert.deepEqual(stylesheetPreloadHeaders(config, options), [])
+})
+
+test('preloads only the stylesheets every page links, but asks for every hint', () => {
+  const scoped = normalizeConfig({
+    segments: [],
+    prefs: { theme: { values: ['dark'], stylesheet: '/theme.css' } },
+    flags: { arch: { header: 'sec-ch-ua-arch', values: { arm: '"arm"' }, stylesheet: '/arch.css', global: false } },
+  })
+  assert.deepEqual(stylesheetPreloadHeaders(scoped)[0].headers, [
+    { key: 'Link', value: '</theme.css>; rel=preload; as=style' },
+  ])
+  // the browser remembers what it was asked for across the site
+  assert.deepEqual(clientHintHeaders(scoped)[0].headers, [{ key: 'Accept-CH', value: 'sec-ch-ua-arch' }])
+  // and a stylesheet that is not global is served and cached like any other
+  assert.deepEqual(stylesheetHeaders(scoped).map((header) => header.source), ['/arch.css', '/theme.css'])
+  const onlyScoped = normalizeConfig({ segments: [], flags: { arch: { header: 'x', values: ['a'], stylesheet: '/arch.css', global: false } } })
+  assert.deepEqual(stylesheetPreloadHeaders(onlyScoped), [])
+})
+
+test('preloads no stylesheet whose hint the browser has yet to be asked for', () => {
+  const hinted = normalizeConfig({
+    segments: [],
+    prefs: { theme: { values: ['dark'], stylesheet: '/theme.css' } },
+    flags: {
+      memory: { header: 'Device-Memory', values: { low: '0\\.25|0\\.5|1|2' }, stylesheet: '/memory.css' },
+      platform: { header: 'Sec-CH-UA-Platform', values: { mac: '"macOS"' }, stylesheet: '/platform.css' },
+    },
+  })
+  // On a first visit a 103 comes before the Accept-CH, so the preload would
+  // fetch memory.default.css; the platform is sent unasked.
+  assert.deepEqual(stylesheetPreloadHeaders(hinted)[0].headers, [
+    { key: 'Link', value: '</platform.css>; rel=preload; as=style, </theme.css>; rel=preload; as=style' },
+  ])
+  assert.deepEqual(clientHintHeaders(hinted)[0].headers, [
+    { key: 'Accept-CH', value: 'device-memory, sec-ch-ua-platform' },
+  ])
+})
+
+test('asks for every client hint an indicator or hard flag reads, on every page', () => {
+  const hinted = normalizeConfig({
+    locales: ['en'],
+    defaultLocale: 'en',
+    prefs: { theme: { values: ['dark'], stylesheet: '/theme.css' } },
+    flags: {
+      data: { header: 'ECT', values: ['slow-2g', '2g'] },
+      motion: { header: 'Sec-CH-Prefers-Reduced-Motion', values: ['reduce'], stylesheet: '/motion.css' },
+      tz: { header: 'x-vercel-ip-timezone', values: { EST: 'America/New_York' } },
+      width: { query: 'sec-ch-viewport-width', values: ['1'] },
+    },
+  })
+  const hard = normalizeHardFlags(
+    { mobile: { header: 'Sec-CH-UA-Mobile', values: { yes: '\\?1' } }, beta: { values: ['s'] } },
+    hinted
+  )
+  const headers = clientHintHeaders(hinted, hard, options)
+  checkCustomRoutes(headers, 'header')
+  // not a cookie, a query, or a header that is no hint
+  assert.deepEqual(headers[0].headers, [
+    { key: 'Accept-CH', value: 'ect, sec-ch-prefers-reduced-motion, sec-ch-ua-mobile' },
+  ])
+  // on the same pages as the preload
+  assert.equal(headers[0].source, stylesheetPreloadHeaders(hinted, options)[0].source)
+  const page = getPathMatch(headers[0].source, { strict: true, removeUnnamedParams: true })
+  assert.ok(page('/en/login'))
+  assert.equal(page('/api/x'), false)
+
+  // Critical only for what the path reads: the stylesheet has it from the first page.
+  assert.deepEqual(clientHintHeaders(hinted, hard, { ...options, critical: true })[0].headers, [
+    { key: 'Accept-CH', value: 'ect, sec-ch-prefers-reduced-motion, sec-ch-ua-mobile' },
+    { key: 'Critical-CH', value: 'ect, sec-ch-ua-mobile' },
+  ])
+  assert.deepEqual(clientHintHeaders(styled, [], { critical: true })[0].headers, [
+    { key: 'Accept-CH', value: 'sec-ch-prefers-reduced-motion' },
+  ])
+  assert.deepEqual(clientHintHeaders(config, [], options), [])
 })
 
 // ---- a site in one language --------------------------------------------------

@@ -27,5 +27,36 @@ export const indicators = createIndicators({
       values: { fr: 'fr.*', de: 'de.*', es: 'es.*', ja: 'ja.*', zh: 'zh.*' },
       prerender: false,
     },
+    // Through stylesheets: which download button the download demo shows.
+    // Not global: only that page links them, so no other page asks.
+    // Every browser names its OS in User-Agent; the first match wins, so
+    // Android, whose User-Agent says Linux too, comes before Linux.
+    os: {
+      header: 'user-agent',
+      values: {
+        android: '.*Android.*',
+        ios: '.*(?:iPhone|iPad).*',
+        mac: '.*Macintosh.*',
+        windows: '.*Windows.*',
+        linux: '.*Linux.*',
+      },
+      stylesheet: '/platform/os.css',
+      global: false,
+    },
+    // Only Chromium sends this, and only once asked, which the plugin does.
+    arch: {
+      header: 'sec-ch-ua-arch',
+      values: { arm: '"arm"', x86: '"x86"' },
+      stylesheet: '/platform/arch.css',
+      global: false,
+    },
+    // Which of the family's builds: "x86" is a 32-bit PC as much as a 64-bit
+    // one. From the same browsers, on the same terms.
+    bitness: {
+      header: 'sec-ch-ua-bitness',
+      values: { 64: '"64"', 32: '"32"' },
+      stylesheet: '/platform/bitness.css',
+      global: false,
+    },
   },
 })

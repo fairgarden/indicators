@@ -11,10 +11,12 @@ import {
 } from './config.ts'
 import type { Indicators } from './indicators.ts'
 import {
+  clientHintHeaders,
   hardFlagRewrites,
   indicatorsRedirects,
   indicatorsRewrites,
   stylesheetHeaders,
+  stylesheetPreloadHeaders,
   type Rewrite,
   type RewriteOptions,
 } from './routes.ts'
@@ -49,6 +51,40 @@ export interface PluginOptions {
    * Here rather than in the config so the value stays out of the browser.
    */
   hardFlags?: HardFlags
+  /**
+   * Whether every page names the app's global stylesheets in a `Link`
+   * preload header, which a CDN can send ahead of the page as 103 Early
+   * Hints. Defaults to true; nothing is added without one. A stylesheet
+   * declared `global: false` is never preloaded, and nor is one that reads
+   * a client hint the browser sends only when asked: on a first visit the
+   * 103 arrives before the `Accept-CH` that asks, and would preload the
+   * default.
+   *
+   * A page is any path outside `exclude` — `_next`, `api` and the rest,
+   * and what `detectExclusions` finds — whose last segment has no
+   * extension. Of the `headers` entries that match, Next keeps the last
+   * value for each header, so a `Link` the app's own `headers` set on a
+   * page replaces this one; list the stylesheets in it too, or turn this
+   * off. The preload headers React adds while rendering are appended, and
+   * are unaffected.
+   */
+  preloadStylesheets?: boolean
+  /**
+   * Whether pages ask the browser, with `Accept-CH`, for the client hints
+   * the indicators and hard flags read — `Device-Memory`, `Sec-CH-UA-Arch`
+   * and the like, which a browser sends only when asked. Defaults to true;
+   * nothing is added when none is read.
+   *
+   * A stylesheet gets the hint from the first page on, but the path needs
+   * it on the page's own request, which the first visit cannot carry.
+   * `'critical'` also names the hints the path reads in `Critical-CH`, so
+   * the browser retries that first request with them: one more round trip,
+   * once per visitor.
+   *
+   * On the same pages as `preloadStylesheets`, and ahead of the app's own
+   * headers, so an `Accept-CH` the app sets on a page replaces this one.
+   */
+  clientHints?: boolean | 'critical'
 }
 
 type Phases = { beforeFiles: Rewrite[]; afterFiles: Rewrite[]; fallback: Rewrite[] }
@@ -215,7 +251,8 @@ const call = async <T>(value: (() => T | Promise<T>) | undefined): Promise<T | u
 
 /**
  * Add the rewrites and redirects that put the locale, preferences and flags
- * into the path.
+ * into the path, the headers that serve the stylesheet indicators, and the
+ * one that asks for the client hints they read.
  *
  * ```ts
  * // next.config.ts
@@ -243,17 +280,26 @@ export const withFairGardenIndicators = <C extends IndicatorsConfig>(
     options.detectExclusions === false
       ? {}
       : detectExclusions(root, indicators.config.segments.length > 0)
-  const hard = hardFlagRewrites(
-    indicators.config,
-    normalizeHardFlags(options.hardFlags, indicators.config),
-    detected
-  )
+  const hardFlags = normalizeHardFlags(options.hardFlags, indicators.config)
+  const hard = hardFlagRewrites(indicators.config, hardFlags, detected)
   if (options.detectExclusions !== false) reportMissingStylesheets(root, indicators.config)
+  const clientHints = options.clientHints ?? true
 
   return {
     ...nextConfig,
     headers: async () =>
       [
+        // Ahead of the app's own, so a `Link` or `Accept-CH` it sets on a
+        // page wins.
+        ...(options.preloadStylesheets === false
+          ? []
+          : stylesheetPreloadHeaders(indicators.config, detected)),
+        ...(clientHints === false
+          ? []
+          : clientHintHeaders(indicators.config, hardFlags, {
+              ...detected,
+              critical: clientHints === 'critical',
+            })),
         ...((await call(nextConfig.headers)) ?? []),
         ...stylesheetHeaders(indicators.config),
       ] as Headers,

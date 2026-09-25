@@ -1,9 +1,15 @@
 import { Inspector } from '@/components/Inspector'
+import { Link } from '@/lib/link'
 import { indicators } from '@/lib/indicators'
 
 export default function StaticDemo() {
   const params = indicators.generateStaticParams()
-  const sheets = indicators.stylesheets()
+  const sheets = (global: boolean) =>
+    indicators
+      .stylesheets()
+      .filter((sheet) => sheet.global === global)
+      .map((sheet) => `${sheet.kind}.${sheet.key}  ${sheet.href}`)
+      .join('\n')
   return (
     <>
       <h1>Static generation</h1>
@@ -20,7 +26,13 @@ export default function StaticDemo() {
         segments a prerendered copy would have.
       </p>
       <h2>Stylesheets the layout links to</h2>
-      <pre>{sheets.map((sheet) => `${sheet.kind}.${sheet.key}  ${sheet.href}`).join('\n')}</pre>
+      <pre>{sheets(true)}</pre>
+      <h2>Stylesheets the pages that use them link to</h2>
+      <p>
+        Declared <code>global: false</code>, so the layout leaves them out and only the{' '}
+        <Link href="/demos/download">download demo</Link> links them.
+      </p>
+      <pre>{sheets(false)}</pre>
       <h2>Inspector</h2>
       <Inspector />
     </>

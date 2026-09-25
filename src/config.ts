@@ -57,6 +57,18 @@ export interface IndicatorDefinition {
    * to a year. Only meaningful for a cookie-backed indicator.
    */
   maxAge?: number
+  /**
+   * Whether every page links the stylesheet. Defaults to true: the root
+   * layout's `<Stylesheets>` links it and the plugin preloads it. `false`
+   * leaves it to the pages that use it, each rendering `<Stylesheets
+   * only={[key]}>`, so the rest never ask for it. Only meaningful with a
+   * `stylesheet`.
+   *
+   * Once a page has linked it, React keeps it in the `<head>` for the rest
+   * of the visit, so its rules should reach only what that page renders:
+   * `.downloads [data-os]`, not `[data-os]`.
+   */
+  global?: boolean
 }
 
 export type Definitions = Readonly<Record<string, IndicatorDefinition>>
@@ -170,6 +182,8 @@ export interface NormalizedStylesheet {
   /** `href` without its `.css`: what the files it is rewritten to are named after. */
   base: string
   maxAge: number
+  /** Linked on every page, rather than by the pages that use it. */
+  global: boolean
 }
 
 export interface NormalizedConfig {
@@ -288,7 +302,13 @@ const normalizeIndicators = (
 
   for (const [key, definition] of Object.entries(definitions ?? {})) {
     const indicator = normalizeIndicator(kind, key, definition)
+    if (definition.global !== undefined && typeof definition.global !== 'boolean') {
+      throw new Error(`${kind}.${key}.global must be true or false.`)
+    }
     if (definition.stylesheet === undefined) {
+      if (definition.global !== undefined) {
+        throw new Error(`${kind}.${key}.global says where a stylesheet is linked, and it has none.`)
+      }
       segment.push(indicator)
       continue
     }
@@ -304,6 +324,7 @@ const normalizeIndicators = (
       href,
       base: href.slice(0, -'.css'.length),
       maxAge: indicator.maxAge,
+      global: definition.global ?? true,
     })
   }
 
@@ -477,11 +498,19 @@ export const normalizeConfig = (config: IndicatorsConfig): NormalizedConfig => {
     compareKeys(a.key, b.key)
   )
   const seen = new Set<string>()
+  const keys = new Set<string>()
   for (const sheet of stylesheets) {
     if (seen.has(sheet.href)) {
       throw new Error(`Two indicators share the stylesheet ${sheet.href}; each needs its own.`)
     }
     seen.add(sheet.href)
+    // `<Stylesheets only>` and `usePref` name a stylesheet by its key alone.
+    if (keys.has(sheet.key)) {
+      throw new Error(
+        `prefs.${sheet.key} and flags.${sheet.key} both have a stylesheet, which is named by its key alone; rename one.`
+      )
+    }
+    keys.add(sheet.key)
     // Its rewrites run before the locale steps, and a locale directory would
     // then have the empty segments pushed into the file it was rewritten to.
     const directory = sheet.href.split('/')[1] ?? ''

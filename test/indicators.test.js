@@ -176,7 +176,7 @@ test('keeps a stylesheet indicator out of the segment and lists its link', () =>
     { prefs: 'theme~dark' },
   ])
   assert.equal(styled.prefs.decode('contrast~more'), undefined)
-  assert.deepEqual(styled.stylesheets(), [{ key: 'contrast', kind: 'prefs', href: '/theme/contrast.css' }])
+  assert.deepEqual(styled.stylesheets(), [{ key: 'contrast', kind: 'prefs', href: '/theme/contrast.css', global: true }])
   assert.deepEqual(indicators.stylesheets(), [])
 })
 
@@ -195,7 +195,7 @@ test('serves a site in one language with no locale at all', async () => {
   assert.equal(single.href('/about', undefined), '/about')
   assert.equal(single.negotiate('fr'), undefined)
   assert.deepEqual(single.splitLocale('/fr/x'), { locale: undefined, pathname: '/fr/x' })
-  assert.deepEqual(single.stylesheets(), [{ key: 'theme', kind: 'prefs', href: '/theme.css' }])
+  assert.deepEqual(single.stylesheets(), [{ key: 'theme', kind: 'prefs', href: '/theme.css', global: true }])
 
   const withSegments = createIndicators({ flags: { tz: { header: 'x', values: ['EST'] } } })
   assert.deepEqual(withSegments.generateStaticParams(), [
