@@ -60,8 +60,14 @@ export default function DownloadDemo() {
       linux: '.*Linux.*',
     },
     stylesheet: '/platform/os.css',
+    global: false,
   },
-  arch: { header: 'sec-ch-ua-arch', values: { arm: '"arm"', x86: '"x86"' }, stylesheet: '/platform/arch.css' },
+  arch: {
+    header: 'sec-ch-ua-arch',
+    values: { arm: '"arm"', x86: '"x86"' },
+    stylesheet: '/platform/arch.css',
+    global: false,
+  },
 }`}</pre>
       <p>
         The first value that matches wins, so Android comes before Linux: Chrome on Android says{' '}
