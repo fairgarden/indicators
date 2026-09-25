@@ -110,8 +110,9 @@ button[aria-pressed='true'] {
 }
 /*
  * The download demo. Which button shows, and what the readout says, come
- * from /platform/os.css and /platform/arch.css: stylesheets chosen by the
- * User-Agent and Sec-CH-UA-Arch headers, with no script.
+ * from /platform/os.css, /platform/arch.css and /platform/bitness.css:
+ * stylesheets chosen by the User-Agent, Sec-CH-UA-Arch and Sec-CH-UA-Bitness
+ * headers, with no script.
  */
 .downloads {
   display: flex;
@@ -137,4 +138,7 @@ button[aria-pressed='true'] {
 }
 .detected-arch::after {
   content: var(--arch, 'not sent');
+}
+.detected-bitness::after {
+  content: var(--bitness, 'not sent');
 }

@@ -50,5 +50,13 @@ export const indicators = createIndicators({
       stylesheet: '/platform/arch.css',
       global: false,
     },
+    // Which of the family's builds: "x86" is a 32-bit PC as much as a 64-bit
+    // one. From the same browsers, on the same terms.
+    bitness: {
+      header: 'sec-ch-ua-bitness',
+      values: { 64: '"64"', 32: '"32"' },
+      stylesheet: '/platform/bitness.css',
+      global: false,
+    },
   },
 })

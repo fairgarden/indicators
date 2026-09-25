@@ -1,0 +1,2 @@
+:root { --bitness: "64-bit" }
+.downloads [data-bitness]:not([data-bitness="64"]) { display: none }
