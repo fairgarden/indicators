@@ -53,9 +53,8 @@ the monolith inlines into the bundle.
 
 ## The proxy moves
 
-A deployment has one proxy, so an app's `proxy.ts` is not mounted — the
-monolith's portability check says so. The monolith runs detection for every
-app it serves, at each app's root:
+A deployment has one proxy, so an app's `proxy.ts` is not mounted. The
+monolith runs detection for every app it serves, at each app's root:
 
 ```ts
 // apps/monolith/proxy.ts
@@ -68,6 +67,11 @@ export const config = { matcher: ['/', '/id'] }
 ```
 
 A redirect from `/id` then goes to `/id/fr`. An app's own `proxy.ts` stays for running it standalone.
+
+The monolith's portability check accepts an app proxy that is only
+`createLocaleProxy`, since this is where it runs; anything more in it is
+reported. `withMonolith` warns instead when the monolith's own proxy leaves out
+an app that has one — its mount missing from `config.matcher`.
 
 ## Cookies are shared
 
