@@ -6,25 +6,6 @@ Version **0.1.0-alpha.2**
 
 <!-- /fg:version -->
 
-<!-- fg:releasing -->
-
-## Releasing
-
-This module releases on its own. `0.1.0-alpha.2` is what main is working towards,
-not what is published — the version here is always the next one.
-
-1. **Publish it.** Run the *Publish* workflow from the Actions tab, picking the
-   dist tag. It refuses if that version is already on npm.
-2. **Move it on.** `pnpm release` — opens a pull request bumping this branch
-   to `0.1.0-alpha.3`, or `pnpm release --id rc` to change
-   identifier. A prerelease gets no maintenance branch; there is no released
-   line behind it yet.
-
-Every push to main publishes `@fairgarden/indicators@canary`. A canary is not a release and
-carries no promise; it is there so main can be tried without a checkout.
-
-<!-- /fg:releasing -->
-
 Put the locale, the user's preferences and the request's flags into the path,
 so every variant of a Next.js page is a plain static route.
 
@@ -186,3 +167,30 @@ This allows us to lump multiple cities into a single cache key.
 ## Timezone Daylight Savings Time
 
 Due to the way timezones work, the cache must be purged whenever a time change occurs. We can get the timezone location in the router, but not if daylight savings time is in effect. This benefits us anyway because there is no reason to cache content that won't be fetched again for half of the year.
+
+<!-- fg:releasing -->
+
+## Releasing
+
+This module releases on its own. `0.1.0-alpha.2` is what main is working towards,
+not what is published — the version here is always the next one. Its release
+notes are the top section of `CHANGELOG.md`, where every pull request adds a
+line linking itself.
+
+1. **Publish it.** Run the *Publish* workflow from the Actions tab, picking the
+   dist tag. It refuses if that version is already on npm. Once it is out, open
+   pull requests are held — their changelog check fails — so nothing is noted
+   under a version that has already shipped.
+2. **Start the next version.** `pnpm next-version` opens a pull request moving
+   main to `0.1.0-alpha.3` and starting its section of the
+   changelog, or `pnpm next-version --id rc` to change identifier. Merging it
+   lifts the hold. A prerelease gets no maintenance branch; there is no
+   released line behind it yet.
+
+A held pull request goes on once it is brought up to date with main and its
+line is moved into the new version's section.
+
+Every push to main publishes `@fairgarden/indicators@canary`. A canary is not a release and
+carries no promise; it is there so main can be tried without a checkout.
+
+<!-- /fg:releasing -->
