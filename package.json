@@ -42,12 +42,13 @@
     "lint": "eslint",
     "test": "node --import ./test/resolve-next.mjs --test test/*.test.js",
     "canary": "fg-dist canary",
-    "release": "fg-dist release",
     "release:check": "fg-dist release --check",
-    "changelog": "fg-dist changelog"
+    "changelog": "fg-dist changelog",
+    "dist": "fg-dist",
+    "next-version": "fg-dist next-version"
   },
   "devDependencies": {
-    "@fairgarden/distribution": "^0.1.0-alpha.3",
+    "@fairgarden/distribution": "^0.1.0-alpha.6",
     "@types/node": "^26.6.2",
     "@types/react": "^19.3.0",
     "@typescript-eslint/eslint-plugin": "^8.70.0",
