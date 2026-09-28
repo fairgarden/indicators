@@ -3,11 +3,36 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import createMDX from '@next/mdx'
 import type { NextConfig } from 'next'
+import {
+  getFairGardenDocsMdxOptions,
+  withDeploymentConfig,
+  withFairGardenDocs,
+} from '@fairgarden/docs/withFairGardenDocs'
 import { withFairGardenIndicators } from '@fairgarden/indicators/withFairGardenIndicators'
 // With the extension: Next loads this file with Node itself, which resolves
 // a relative import only when it has one.
 import { indicators } from './lib/indicators.ts'
 import { BETA_COOKIE_VALUE } from './lib/demo.ts'
+
+// Section indexes: the section directories whose page.mdx the docs engine
+// keeps as an index of the pages under it. The sitemap (app/sitemap/index.ts)
+// is built from these indexes, and the sidebar and search from the sitemap.
+// `pnpm validate` brings them up to date, and fails under CI when one was
+// out of date.
+const extractToIndex = {
+  include: ['app/[locale]/[prefs]/[flags]/overview', 'app/[locale]/[prefs]/[flags]/functions'],
+  exclude: [],
+}
+
+const withMDX = createMDX({
+  options: getFairGardenDocsMdxOptions({
+    // Plugin names are resolved from each .mdx file's directory, so every one
+    // must be a direct dependency of this package. rehype-slug gives each
+    // heading the id its self-link and `#` links point at.
+    additionalRehypePlugins: ['rehype-slug'],
+    extractToIndex,
+  }),
+})
 
 // Turbopack resolves nothing outside its root, which it puts at the nearest
 // lockfile or repository: this module's own. Installed from a distribution,
@@ -17,20 +42,26 @@ import { BETA_COOKIE_VALUE } from './lib/demo.ts'
 const nextPackage = realpathSync(
   createRequire(path.join(process.cwd(), 'package.json')).resolve('next/package.json')
 )
-const installRoot = nextPackage.slice(
-  0,
-  nextPackage.indexOf(`${path.sep}node_modules${path.sep}`)
-)
+const installRoot = nextPackage.slice(0, nextPackage.indexOf(`${path.sep}node_modules${path.sep}`))
 
 const nextConfig: NextConfig = {
-  // `.mdx` is not a route on its own; Next only picks these up once the
-  // extension is listed here and the loader below is attached.
-  pageExtensions: ['ts', 'tsx', 'mdx'],
+  // Parallel builds and dev servers can each use their own build dir.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   turbopack: { root: installRoot },
+  // withDeploymentConfig defaults both of these the other way.
+  trailingSlash: false,
+  typescript: { ignoreBuildErrors: false },
 }
 
 // The site runs the library it documents: every page is served through the
 // rewrites, and the demos are the real thing.
-export default withFairGardenIndicators(createMDX()(nextConfig), indicators, {
-  hardFlags: { beta: { values: [BETA_COOKIE_VALUE] } },
-})
+export default withDeploymentConfig(
+  withFairGardenDocs({
+    // The default (true) sets output: 'export', which breaks `next start`.
+    enableExportOutput: false,
+  })(
+    withFairGardenIndicators(withMDX(nextConfig), indicators, {
+      hardFlags: { beta: { values: [BETA_COOKIE_VALUE] } },
+    })
+  )
+)

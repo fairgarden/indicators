@@ -1,0 +1,139 @@
+# Indicators
+
+Metadata about a user is not enough to know what they want.
+
+It is enough to
+*suggest* something. Metadata that is useful for suggesting an action is an
+indicator.
+
+- the language the browser asks for
+- the timezone the request came from
+- the region, from the IP
+- the device, or the connection — `Save-Data`, a 5G hint
+- being inside a private network
+- `DNT`, or `Sec-GPC`
+
+## Why these are only indicators
+
+Locale detection is not accurate. A browser may still have the language it
+shipped with, and a traveller in a foreign country does not speak its
+language just because their IP says they are there. The detected language is
+useful for suggesting a switch, and useless for deciding one.
+
+The same holds for time. A detected timezone is a fine reason to ask *is this
+where you are?* and a poor reason to reformat every date without asking.
+
+## Preferences
+
+A preference is a choice the user made: they set a theme, they picked a
+currency, they confirmed a timezone. It is stored in a cookie and it is
+theirs to change.
+
+## Flags
+
+A flag is a fact about the request. It comes from a header the client or the
+edge added, and the user did not choose it. It may be an environmental fact —
+the timezone the IP resolves to — or a flag in the other sense: a feature
+flag, which a cookie carries but which the *app* switches on, not the user.
+
+## Why keep them apart
+
+Sometimes a user has no control over an indicator. The timezone the request
+came from is not the one they would pick; the language their browser sends is
+not the one they read. The app wants both: the preference to render with, and
+the flag to offer a change against.
+
+```tsx
+const { locale, flags } = await indicators.read(params)
+
+{flags.lang === 'fr' && locale !== 'fr' && (
+  <p>Cette page existe en français. <Link href="/" locale="fr">Y aller</Link></p>
+)}
+```
+
+Putting both in the path lets a static page do that. The banner is part of
+the `lang~fr` variant, rendered once and cached, and a visitor whose browser
+asks for French sees it without the page ever reading a header.
+
+## What goes where
+
+| | Preference | Flag |
+| --- | --- | --- |
+| means | a choice | an observation |
+| default source | a cookie of the same name | a header of the same name |
+| who sets it | the user, through `usePref` | the client, the edge, or the app |
+| path segment | second | third |
+
+The source is a default, not a rule. A feature flag reads from a cookie, and
+`flags: { beta: { cookie: 'beta', values: ['on'] } }` says so. What decides
+the kind is the meaning, because that is what a page does with it.
+
+A flag that *gates* something — a cohort let into a beta by a value they
+were given — is a [hard flag](/overview/hard-flags), declared in
+`next.config.ts` so the value stays on the server, and it switches routes
+rather than variants.
+
+## Headers a browser sends only when asked
+
+Most headers a flag reads arrive on every request: `Accept-Language`,
+`Save-Data` when it is on, `Sec-GPC`, and whatever the edge adds, such as
+the country from the IP. So do three client hints: `Sec-CH-UA`,
+`Sec-CH-UA-Mobile` and `Sec-CH-UA-Platform`.
+
+The other client hints are sent only once the site asks for them, with
+`Accept-CH` on a page. That includes the device's memory
+(`Device-Memory`), its architecture and model (`Sec-CH-UA-Arch`,
+`Sec-CH-UA-Model`), the viewport, `Sec-CH-Prefers-Reduced-Motion` and
+`Sec-CH-Prefers-Color-Scheme`, and the network hints (`ECT`, `RTT`,
+`Downlink`). The plugin asks for every hint an indicator or hard flag
+reads, on every page:
+
+```ts
+flags: {
+  // which installer a download page offers first
+  arch: { header: 'sec-ch-ua-arch', values: { arm: '"arm"', x86: '"x86"' } },
+  // a device short on memory: no blur, no parallax
+  memory: { header: 'device-memory', values: { low: '0\\.25|0\\.5|1|2' }, stylesheet: '/memory.css' },
+}
+```
+
+```
+Accept-CH: device-memory, sec-ch-ua-arch
+```
+
+A hint's value is matched as the browser sends it. `Sec-CH-UA-Arch` is a
+quoted string, `"arm"` with the quotes, and `Device-Memory` is the memory
+in gigabytes, rounded to a power of two.
+
+On a first visit, the request for the page does not carry the hint, since
+the browser has not been asked yet. Every request the page makes does,
+its stylesheets included. The browser also remembers the request for the
+site, so every later page request carries it too. That makes a difference
+to where the hint can be used:
+
+- **Through a [stylesheet](/overview/stylesheets)**, it works from the
+  first page, because the stylesheet is requested by the page that asked.
+  For the same reason, the stylesheet is not preloaded: a preload sent
+  ahead of the page would go before the asking.
+- **In the path**, the first page a visitor opens is the default variant,
+  and the ones after it are right. With `clientHints: 'critical'`, the
+  plugin also names the hints the path reads in `Critical-CH`, and the
+  browser retries that first request with them. That costs one extra round
+  trip, once per visitor. Above, that is `sec-ch-ua-arch` alone. A
+  download page is often the first page a visitor opens, so there the
+  round trip is worth it.
+
+`clientHints: false` in
+[`withFairGardenIndicators`](/functions/withFairGardenIndicators) leaves
+`Accept-CH` to the app. A browser acts on it only over HTTPS, or on
+`localhost`.
+
+Only Chromium-based browsers send these hints. Firefox and Safari send none
+of them, so their visitors always get the default, the same as for any
+header that is missing.
+
+Some hints repeat what a media query already says, in every browser:
+reduced motion, the color scheme, the viewport width. For how a page looks,
+use the media query, and read the hint only to change what a page renders.
+The others have no media query at all. No CSS can tell how much memory a
+device has or what it runs on, which is why the examples above use them.

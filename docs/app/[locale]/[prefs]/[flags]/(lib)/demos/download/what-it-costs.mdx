@@ -1,0 +1,17 @@
+## What it costs
+
+None of the three is in the path, so this is one page, not one per platform, and the
+inspector below lists none of them. The cost is three more stylesheets, on this page alone.
+All three are declared `global: false`, so the layout leaves them out and this
+page links them itself:
+
+```tsx
+<Stylesheets indicators={indicators} only={['os', 'arch', 'bitness']} />
+```
+
+No other page on this site asks for them. Here they are three more tiny requests, in
+parallel with the accent's, and a 304 each once the browser has them. They are not
+preloaded, since the plugin preloads only what every page links. Arriving here from another
+page without a reload, the navigation waits for them, so the buttons never show all at once
+first. Leaving the same way, they stay in the `<head>`, which is why every
+rule in them starts at `.downloads`.

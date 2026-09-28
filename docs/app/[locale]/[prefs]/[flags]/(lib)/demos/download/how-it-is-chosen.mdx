@@ -1,0 +1,70 @@
+## How it is chosen
+
+```ts
+flags: {
+  os: {
+    header: 'user-agent',
+    values: {
+      android: '.*Android.*',
+      ios: '.*(?:iPhone|iPad).*',
+      mac: '.*Macintosh.*',
+      windows: '.*Windows.*',
+      linux: '.*Linux.*',
+    },
+    stylesheet: '/platform/os.css',
+    global: false,
+  },
+  arch: {
+    header: 'sec-ch-ua-arch',
+    values: { arm: '"arm"', x86: '"x86"' },
+    stylesheet: '/platform/arch.css',
+    global: false,
+  },
+  bitness: {
+    header: 'sec-ch-ua-bitness',
+    values: { 64: '"64"', 32: '"32"' },
+    stylesheet: '/platform/bitness.css',
+    global: false,
+  },
+}
+```
+
+The first value that matches wins, so Android comes before Linux: Chrome on Android says
+`Linux; Android`. Each value is a tiny file in `public/platform/`:
+
+```http
+GET /platform/os.css
+User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) …
+
+:root { --os: "macOS" }
+.downloads [data-os]:not([data-os="mac"]) { display: none }
+```
+
+Every browser sends `User-Agent`, so the operating system works everywhere. It
+cannot tell the architecture: every Mac says `Intel Mac OS X`, Apple silicon
+included. `Sec-CH-UA-Arch` can, but only Chromium sends it, and only once the
+site asks with `Accept-CH`, which the plugin does on every page. The stylesheet
+is requested by the page that asked, so it has the hint on the first visit. In Firefox and
+Safari the button has no architecture on it.
+
+That hint names the family, not how many bits it has: `"x86"` is a
+32-bit PC as much as a 64-bit one. `Sec-CH-UA-Bitness` says which, and comes from
+the same browsers on the same terms. Each build's label carries both, and each
+stylesheet hides the labels it rules out, so the one left fits both:
+
+```html
+<small data-arch="x86" data-bitness="64">x64</small>
+<small data-arch="x86" data-bitness="32">32-bit</small>
+
+/* arch.x86.css */
+.downloads [data-arch]:not([data-arch="x86"]) { display: none }
+/* bitness.64.css */
+.downloads [data-bitness]:not([data-bitness="64"]) { display: none }
+```
+
+That is one stylesheet per hint, not one per combination. A platform with no build for it,
+such as 32-bit Arm on Windows, is left with no label rather than a wrong one, and so is a
+browser that sends only one of the two.
+
+The guess can be wrong. Safari on an iPad says it is a Mac, and gets the Mac button. So the
+page still lists everything:

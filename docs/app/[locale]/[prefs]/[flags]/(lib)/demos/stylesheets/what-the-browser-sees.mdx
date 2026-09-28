@@ -1,0 +1,17 @@
+## What the browser sees
+
+```http
+GET /theme/accent.css
+Cookie: accent=green
+
+HTTP/1.1 200 OK
+Cache-Control: private, no-cache, stale-if-error=86400
+ETag: W/"..."
+
+:root { --accent: #16a34a; --accent-name: "green" }
+```
+
+`no-cache` makes the browser ask again on every page, which is a 304 while the
+cookie has not changed and a new file once it has. The file is a line, so a fresh copy is
+barely heavier than the 304. On a reload the link is render-blocking CSS in the head, so the
+first frame has the right accent.
