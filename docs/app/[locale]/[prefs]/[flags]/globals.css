@@ -1,110 +1,56 @@
 /*
- * The theme is `data-theme` on <html>, put there by the root layout from the
- * path, and colors are light-dark() pairs, so one attribute switches
- * everything. Without the attribute, `light dark` follows the OS.
+ * The demos' own widgets. The page, its type and its colors are the design
+ * system's (the root layout's global stylesheet, which follows `data-theme`
+ * on <html>); these rules are only for what the demos show working. The
+ * accent is `--accent`, from /theme/accent.css: a stylesheet chosen by cookie.
  */
-:root {
-  color-scheme: light dark;
+.panel {
+  border: var(--border-size-1) solid var(--role-hairline);
+  border-radius: var(--radius-2);
+  padding: var(--size-px-3) var(--size-px-4);
+  margin-block: var(--size-px-4);
 }
-[data-theme='light'] {
-  color-scheme: light;
+.panel.beta {
+  border-color: var(--accent, var(--role-rule));
 }
-[data-theme='dark'] {
-  color-scheme: dark;
-}
-
-html {
-  background: light-dark(#ffffff, #0f1115);
-  color: light-dark(#1a1a1a, #e6e6e6);
-  font: 16px/1.55 system-ui, -apple-system, 'Segoe UI', sans-serif;
-}
-body {
-  margin: 0;
-}
-nav {
-  display: flex;
-  gap: 1rem;
-  padding: 0.75rem 1.25rem;
-  border-bottom: 1px solid light-dark(#e5e7eb, #262a33);
-}
-main {
-  max-width: 72ch;
-  margin: 0 auto;
-  padding: 1.5rem 1.25rem 4rem;
-}
-/* The accent comes from /theme/accent.css, a stylesheet chosen by cookie. */
-a {
-  color: var(--accent, #6b7280);
-}
-pre {
-  background: light-dark(#f3f4f6, #1b1f27);
-  padding: 1rem;
-  overflow: auto;
-  border-radius: 6px;
-}
-code {
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-  font-size: 0.9em;
-}
-table {
-  border-collapse: collapse;
-}
-th,
-td {
-  border: 1px solid light-dark(#e5e7eb, #262a33);
-  padding: 0.35rem 0.6rem;
-  text-align: left;
-  vertical-align: top;
-}
-button {
-  font: inherit;
-  padding: 0.4rem 0.8rem;
-  border-radius: 6px;
-  border: 1px solid light-dark(#d1d5db, #374151);
-  background: light-dark(#ffffff, #1b1f27);
-  color: inherit;
-  cursor: pointer;
-}
-button[aria-pressed='true'] {
-  background: var(--accent, #6b7280);
-  border-color: var(--accent, #6b7280);
-  color: #ffffff;
+.panel > * + * {
+  margin-block-start: var(--size-px-3);
 }
 .controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin: 1rem 0;
+  gap: var(--size-px-2);
 }
-.panel {
-  border: 1px solid light-dark(#e5e7eb, #262a33);
-  border-radius: 8px;
-  padding: 1rem 1.25rem;
-  margin: 1.25rem 0;
+.controls button {
+  padding: var(--size-px-1) var(--size-px-3);
+  border-radius: var(--radius-2);
+  border: var(--border-size-1) solid var(--role-rule);
+  background: var(--role-ground);
 }
-.panel.beta {
-  border-color: var(--accent, #6b7280);
+.controls button[aria-pressed='true'] {
+  background: var(--accent, var(--primary12));
+  border-color: var(--accent, var(--primary12));
+  color: var(--role-ground);
 }
 .swatch {
   display: inline-block;
   width: 1.1em;
   height: 1.1em;
-  border-radius: 4px;
-  background: var(--accent, #6b7280);
+  border-radius: var(--radius-1);
+  background: var(--accent, var(--role-muted));
   vertical-align: -0.15em;
 }
 .inspector {
   display: grid;
   grid-template-columns: max-content 1fr;
-  gap: 0.25rem 1rem;
-  margin: 0;
+  gap: var(--size-px-1) var(--size-px-3);
+  margin-block: var(--size-px-3);
 }
 .inspector dt {
   font-weight: 600;
 }
 .inspector dd {
-  margin: 0;
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-family: var(--fgd-font-mono);
   font-size: 0.9em;
   overflow-wrap: anywhere;
 }
@@ -117,16 +63,15 @@ button[aria-pressed='true'] {
 .downloads {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin: 1rem 0;
+  gap: var(--size-px-2);
 }
 .download {
   display: inline-flex;
   flex-direction: column;
-  padding: 0.6rem 1rem;
-  border-radius: 6px;
-  background: var(--accent, #6b7280);
-  color: #ffffff;
+  padding: var(--size-px-2) var(--size-px-3);
+  border-radius: var(--radius-2);
+  background: var(--accent, var(--primary12));
+  color: var(--role-ground);
   font-weight: 600;
   text-decoration: none;
 }
